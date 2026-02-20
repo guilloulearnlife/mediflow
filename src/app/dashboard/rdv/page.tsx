@@ -1,6 +1,7 @@
 import { createClient } from '@/lib/supabase-server'
 import { redirect } from 'next/navigation'
 import Link from 'next/link'
+import Navbar from '@/components/Navbar'
 
 export default async function RdvPage() {
   const supabase = await createClient()
@@ -23,18 +24,14 @@ export default async function RdvPage() {
 
   return (
     <main className="min-h-screen bg-[#F4F7FB]">
-      <div className="bg-white border-b border-[#E2EAF4] px-8 py-4 flex items-center justify-between">
-        <div>
-          <h1 className="text-xl font-black text-[#0C1E35]">
-            Medi<span className="text-[#0BA896]">Flow</span>
-            <span className="text-[#64748B] font-normal text-base ml-3">· Rendez-vous</span>
-          </h1>
-          <p className="text-xs text-[#64748B] mt-0.5">{rdvs?.length ?? 0} rendez-vous au total</p>
-        </div>
-        <div className="flex items-center gap-3">
-          <Link href="/dashboard" className="text-sm text-[#64748B] hover:text-[#0BA896] transition-colors">
-            ← Dashboard
-          </Link>
+      <Navbar email={user.email!} role="secretaire" />
+
+      <div className="p-8">
+        <div className="flex items-center justify-between mb-6">
+          <div>
+            <h2 className="text-2xl font-black text-[#0C1E35]">Rendez-vous</h2>
+            <p className="text-sm text-[#64748B] mt-1">{rdvs?.length ?? 0} rendez-vous au total</p>
+          </div>
           <Link
             href="/dashboard/rdv/nouveau"
             className="bg-[#0BA896] text-white px-5 py-2.5 rounded-xl font-bold text-sm hover:bg-[#097A6E] transition-colors"
@@ -42,9 +39,7 @@ export default async function RdvPage() {
             + Nouveau RDV
           </Link>
         </div>
-      </div>
 
-      <div className="p-8">
         <div className="bg-white border border-[#E2EAF4] rounded-2xl shadow-sm overflow-hidden">
           <div className="divide-y divide-[#E2EAF4]">
             {rdvs && rdvs.length > 0 ? (
@@ -57,12 +52,8 @@ export default async function RdvPage() {
                       {patient?.nom?.[0] ?? '?'}
                     </div>
                     <div className="flex-1">
-                      <div className="text-sm font-bold text-[#0C1E35]">
-                        {patient?.prenom} {patient?.nom}
-                      </div>
-                      <div className="text-xs text-[#64748B] mt-0.5">
-                        {rdv.motif} · {rdv.medecin} · {patient?.telephone}
-                      </div>
+                      <div className="text-sm font-bold text-[#0C1E35]">{patient?.prenom} {patient?.nom}</div>
+                      <div className="text-xs text-[#64748B] mt-0.5">{rdv.motif} · {rdv.medecin} · {patient?.telephone}</div>
                     </div>
                     <div className="text-sm font-bold text-[#0C1E35]">
                       {new Date(rdv.date_rdv).toLocaleDateString('fr-FR')}
