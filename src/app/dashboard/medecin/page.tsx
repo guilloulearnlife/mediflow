@@ -1,11 +1,15 @@
 import { createClient } from '@/lib/supabase-server'
 import { redirect } from 'next/navigation'
 import Navbar from '@/components/Navbar'
+import { getProfile } from '@/lib/profile'
 
 export default async function MedecinPage() {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) redirect('/auth/login')
+
+  const profile = await getProfile()
+  const role = profile?.role ?? 'medecin'
 
   const today = new Date().toISOString().split('T')[0]
 
@@ -31,7 +35,11 @@ export default async function MedecinPage() {
   return (
     <main className="min-h-screen bg-[#F8F5F0]">
 
-      <Navbar email={user.email!} role="medecin" />
+      <Navbar
+        email={user.email!}
+        role={role}
+        nomPrenom={profile ? `${profile.prenom ?? ''} ${profile.nom ?? ''}`.trim() : undefined}
+      />
 
       <div className="p-8">
 

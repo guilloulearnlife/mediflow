@@ -1,12 +1,15 @@
 import { createClient } from '@/lib/supabase-server'
 import { redirect } from 'next/navigation'
+import { getProfile } from '@/lib/profile'
 import Navbar from '@/components/Navbar'
 
 export default async function DashboardPage() {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
-
   if (!user) redirect('/auth/login')
+
+  const profile = await getProfile()
+  const role = profile?.role ?? 'secretaire'
 
   const { data: cliniques } = await supabase
     .from('cliniques')
@@ -37,7 +40,12 @@ export default async function DashboardPage() {
   return (
     <main className="min-h-screen bg-[#F4F7FB]">
 
-      <Navbar email={user.email!} role="secretaire" cliniqueName={clinique?.nom} />
+      <Navbar
+        email={user.email!}
+        role={role}
+        cliniqueName={clinique?.nom}
+        nomPrenom={profile ? `${profile.prenom ?? ''} ${profile.nom ?? ''}`.trim() : undefined}
+      />
 
       <div className="p-8">
 
@@ -104,7 +112,6 @@ export default async function DashboardPage() {
             )}
           </div>
         </div>
-
       </div>
     </main>
   )

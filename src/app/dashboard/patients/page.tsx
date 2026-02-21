@@ -2,11 +2,15 @@ import { createClient } from '@/lib/supabase-server'
 import { redirect } from 'next/navigation'
 import Link from 'next/link'
 import Navbar from '@/components/Navbar'
+import { getProfile } from '@/lib/profile'
 
 export default async function PatientsPage() {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) redirect('/auth/login')
+
+  const profile = await getProfile()
+  const role = profile?.role ?? 'secretaire'
 
   const { data: patients } = await supabase
     .from('patients')
@@ -15,10 +19,13 @@ export default async function PatientsPage() {
 
   return (
     <main className="min-h-screen bg-[#F4F7FB]">
-      <Navbar email={user.email!} role="secretaire" />
+      <Navbar
+        email={user.email!}
+        role={role}
+        nomPrenom={profile ? `${profile.prenom ?? ''} ${profile.nom ?? ''}`.trim() : undefined}
+      />
 
       <div className="p-8">
-
         <div className="flex items-center justify-between mb-6">
           <div>
             <h2 className="text-2xl font-black text-[#0C1E35]">Patients</h2>

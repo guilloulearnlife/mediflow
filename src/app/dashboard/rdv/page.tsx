@@ -2,11 +2,15 @@ import { createClient } from '@/lib/supabase-server'
 import { redirect } from 'next/navigation'
 import Link from 'next/link'
 import Navbar from '@/components/Navbar'
+import { getProfile } from '@/lib/profile'
 
 export default async function RdvPage() {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) redirect('/auth/login')
+
+  const profile = await getProfile()
+  const role = profile?.role ?? 'secretaire'
 
   const { data: rdvs } = await supabase
     .from('rendez_vous')
@@ -24,7 +28,11 @@ export default async function RdvPage() {
 
   return (
     <main className="min-h-screen bg-[#F4F7FB]">
-      <Navbar email={user.email!} role="secretaire" />
+      <Navbar
+        email={user.email!}
+        role={role}
+        nomPrenom={profile ? `${profile.prenom ?? ''} ${profile.nom ?? ''}`.trim() : undefined}
+      />
 
       <div className="p-8">
         <div className="flex items-center justify-between mb-6">
@@ -32,10 +40,8 @@ export default async function RdvPage() {
             <h2 className="text-2xl font-black text-[#0C1E35]">Rendez-vous</h2>
             <p className="text-sm text-[#64748B] mt-1">{rdvs?.length ?? 0} rendez-vous au total</p>
           </div>
-          <Link
-            href="/dashboard/rdv/nouveau"
-            className="bg-[#0BA896] text-white px-5 py-2.5 rounded-xl font-bold text-sm hover:bg-[#097A6E] transition-colors"
-          >
+          <Link href="/dashboard/rdv/nouveau"
+            className="bg-[#0BA896] text-white px-5 py-2.5 rounded-xl font-bold text-sm hover:bg-[#097A6E] transition-colors">
             + Nouveau RDV
           </Link>
         </div>
