@@ -113,9 +113,9 @@ export default async function RecherchePage() {
                       </div>
                     )}
 
-                    <button className="mt-4 w-full bg-[#00E5A0] text-[#060D1A] px-4 py-2.5 rounded-xl text-xs font-black hover:bg-[#00B87D] transition-colors">
-                      Prendre RDV
-                    </button>
+<Link href="/booking" className="mt-4 w-full bg-[#00E5A0] text-[#060D1A] px-4 py-2.5 rounded-xl text-xs font-black hover:bg-[#00B87D] transition-colors text-center block">
+  Prendre RDV
+</Link>
                   </div>
                 ))
               ) : (
@@ -139,9 +139,9 @@ export default async function RecherchePage() {
                   </div>
                   <div className="text-white font-bold text-sm">{medecin}</div>
                   <div className="text-white/40 text-xs mt-1">Disponible</div>
-                  <button className="mt-3 w-full bg-[#00E5A0]/10 border border-[#00E5A0]/20 text-[#00E5A0] text-xs font-bold py-2 rounded-xl hover:bg-[#00E5A0] hover:text-[#060D1A] transition-colors">
-                    Réserver
-                  </button>
+                  <Link href="/booking" className="mt-3 w-full bg-[#00E5A0]/10 border border-[#00E5A0]/20 text-[#00E5A0] text-xs font-bold py-2 rounded-xl hover:bg-[#00E5A0] hover:text-[#060D1A] transition-colors text-center block">
+  Réserver
+</Link>
                 </div>
               ))}
             </div>
