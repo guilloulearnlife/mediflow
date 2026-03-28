@@ -1,9 +1,9 @@
 'use client'
 
-import { useState, useCallback } from 'react'
+import { useState, useCallback, useRef, useEffect } from 'react'
 import Link from 'next/link'
 import dynamic from 'next/dynamic'
-import { Search, MapPin, Phone, ArrowRight, CheckCircle, Loader2 } from 'lucide-react'
+import { Search, MapPin, Phone, ArrowRight, CheckCircle, Loader2, ChevronDown, X } from 'lucide-react'
 
 const MapRechercheHybride = dynamic(() => import('@/components/MapRechercheHybride'), {
   ssr: false,
@@ -185,10 +185,24 @@ async function fetchOverpass(lat: number, lon: number, rayon: number, osmTags: s
 
 // ─── Composant principal ──────────────────────────────────────────────────────
 
+// Suggestions supplémentaires non présentes dans SPECIALITES
+const EXTRA_SUGGESTIONS = [
+  'Dialyse','Oncologie','Neurologie','ORL','Urologie',
+  'Orthopédie','Psychiatrie','Endocrinologie','Pneumologie',
+  'Gastro-entérologie','Rhumatologie','Hématologie',
+  'Infectiologie','Chirurgie générale','Réanimation',
+]
+
 export default function RecherchePage() {
   const [villeKey, setVilleKey]           = useState('Yaoundé')
   const [specialiteIdx, setSpecialiteIdx] = useState(1) // "Hôpitaux"
   const [texteLibre, setTexteLibre]       = useState('')
+  // Combobox
+  const [dropdownOpen, setDropdownOpen]   = useState(false)
+  const [comboInput, setComboInput]       = useState(SPECIALITES[1].label)
+  const comboRef                          = useRef<HTMLDivElement>(null)
+  const inputRef                          = useRef<HTMLInputElement>(null)
+
   const [loadingMF, setLoadingMF]         = useState(false)
   const [loadingOSM, setLoadingOSM]       = useState(false)
   const [cliniques, setCliniques]         = useState<Clinique[]>([])
@@ -198,8 +212,51 @@ export default function RecherchePage() {
   const [selected, setSelected]           = useState<Clinique | null>(null)
   const [searched, setSearched]           = useState(false)
 
+  // Fermer le dropdown si clic à l'extérieur
+  useEffect(() => {
+    function onMouseDown(e: MouseEvent) {
+      if (comboRef.current && !comboRef.current.contains(e.target as Node)) {
+        setDropdownOpen(false)
+      }
+    }
+    document.addEventListener('mousedown', onMouseDown)
+    return () => document.removeEventListener('mousedown', onMouseDown)
+  }, [])
+
+  // Suggestions filtrées (prédéfinies + extras)
+  const allSuggestions = [
+    ...SPECIALITES.map((s, i) => ({ label: s.label, idx: i, isPredef: true })),
+    ...EXTRA_SUGGESTIONS
+      .filter(s => !SPECIALITES.some(sp => sp.label.toLowerCase() === s.toLowerCase()))
+      .map(s => ({ label: s, idx: -1, isPredef: false })),
+  ]
+  const filtered = comboInput.trim()
+    ? allSuggestions.filter(s => s.label.toLowerCase().includes(comboInput.trim().toLowerCase()))
+    : allSuggestions
+
+  function selectOption(item: typeof allSuggestions[0]) {
+    setComboInput(item.label)
+    if (item.isPredef && item.idx >= 0) {
+      setSpecialiteIdx(item.idx)
+      setTexteLibre('')
+    } else {
+      setTexteLibre(item.label)
+    }
+    setDropdownOpen(false)
+  }
+
+  function handleComboChange(val: string) {
+    setComboInput(val)
+    const match = SPECIALITES.findIndex(s => s.label.toLowerCase() === val.toLowerCase())
+    if (match >= 0) {
+      setSpecialiteIdx(match)
+      setTexteLibre('')
+    } else {
+      setTexteLibre(val)
+    }
+  }
+
   const specialite = SPECIALITES[specialiteIdx]
-  // Si texte libre, on l'utilise comme label affiché
   const labelRecherche = texteLibre.trim() || specialite.label
 
   const handleSearch = useCallback(async () => {
@@ -271,59 +328,87 @@ export default function RecherchePage() {
           Choisissez votre ville et la spécialité pour voir tous les établissements à proximité
         </p>
 
-        <div className="max-w-2xl mx-auto flex flex-col gap-2">
-          {/* Ligne principale */}
-          <div className="bg-white rounded-2xl p-2 flex flex-col sm:flex-row gap-2 shadow-2xl">
-            <select value={villeKey} onChange={e => setVilleKey(e.target.value)}
-              className="flex-1 px-4 py-3 text-[#0C1E35] text-sm outline-none rounded-xl bg-[#F4F7FB] cursor-pointer">
-              {Object.keys(VILLES).sort().map(v => (
-                <option key={v} value={v}>{v}</option>
-              ))}
-            </select>
-            <select value={specialiteIdx} onChange={e => { setSpecialiteIdx(Number(e.target.value)); setTexteLibre('') }}
-              className="flex-1 px-4 py-3 text-[#0C1E35] text-sm outline-none rounded-xl bg-[#F4F7FB] cursor-pointer">
-              {SPECIALITES.map((s, i) => (
-                <option key={s.value} value={i}>{s.label}</option>
-              ))}
-            </select>
-            <button onClick={handleSearch} disabled={loading}
-              className="flex items-center justify-center gap-2 bg-[#00E5A0] text-[#060D1A] px-6 py-3 rounded-xl font-black text-sm hover:bg-[#00B87D] transition-colors disabled:opacity-60">
-              {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Search className="w-4 h-4" />}
-              {loading ? 'Recherche...' : 'Rechercher'}
-            </button>
-          </div>
+        <div className="max-w-2xl mx-auto bg-white rounded-2xl p-2 flex flex-col sm:flex-row gap-2 shadow-2xl">
+          {/* Ville */}
+          <select value={villeKey} onChange={e => setVilleKey(e.target.value)}
+            className="flex-1 px-4 py-3 text-[#0C1E35] text-sm outline-none rounded-xl bg-[#F4F7FB] cursor-pointer">
+            {Object.keys(VILLES).sort().map(v => (
+              <option key={v} value={v}>{v}</option>
+            ))}
+          </select>
 
-          {/* Champ texte libre */}
-          <div className="relative">
-            <input
-              list="specialites-suggestions"
-              type="text"
-              value={texteLibre}
-              onChange={e => setTexteLibre(e.target.value)}
-              onKeyDown={e => e.key === 'Enter' && handleSearch()}
-              placeholder="Ou tapez une spécialité précise… (ex : dialyse, oncologie, ORL, neurologie)"
-              className="w-full px-4 py-2.5 rounded-xl bg-white/10 border border-white/20 text-white text-sm placeholder:text-white/30 outline-none focus:border-[#00E5A0]/50 focus:bg-white/15 transition-all"
-            />
-            <datalist id="specialites-suggestions">
-              {SPECIALITES.map(s => <option key={s.value} value={s.label} />)}
-              {['Dialyse','Oncologie','Neurologie','ORL','Urologie','Ophtalmologie',
-                'Orthopédie','Psychiatrie','Endocrinologie','Pneumologie','Gastro-entérologie',
-                'Rhumatologie','Hématologie','Infectiologie','Chirurgie générale'].map(s => (
-                <option key={s} value={s} />
-              ))}
-            </datalist>
-            {texteLibre && (
-              <button onClick={() => setTexteLibre('')}
-                className="absolute right-3 top-1/2 -translate-y-1/2 text-white/40 hover:text-white/80 text-xs transition-colors">
-                ✕
-              </button>
+          {/* Combobox spécialité */}
+          <div className="flex-1 relative" ref={comboRef}>
+            <button
+              type="button"
+              onClick={() => { setDropdownOpen(v => !v); setTimeout(() => inputRef.current?.focus(), 10) }}
+              className="w-full px-4 py-3 text-[#0C1E35] text-sm rounded-xl bg-[#F4F7FB] flex items-center justify-between gap-2 hover:bg-[#e8edf5] transition-colors"
+            >
+              <span className="truncate text-left">{comboInput || 'Spécialité…'}</span>
+              <ChevronDown className={`w-4 h-4 text-[#0C1E35]/40 flex-shrink-0 transition-transform ${dropdownOpen ? 'rotate-180' : ''}`} />
+            </button>
+
+            {dropdownOpen && (
+              <div className="absolute top-full left-0 right-0 mt-1 bg-white rounded-2xl shadow-2xl border border-slate-100 z-50 overflow-hidden">
+                {/* Input de recherche */}
+                <div className="p-2 border-b border-slate-100 flex items-center gap-2">
+                  <Search className="w-4 h-4 text-slate-400 flex-shrink-0 ml-1" />
+                  <input
+                    ref={inputRef}
+                    type="text"
+                    value={comboInput}
+                    onChange={e => handleComboChange(e.target.value)}
+                    onKeyDown={e => {
+                      if (e.key === 'Enter') { setDropdownOpen(false); handleSearch() }
+                      if (e.key === 'Escape') setDropdownOpen(false)
+                    }}
+                    placeholder="Tapez une spécialité… (ex: dialyse, ORL)"
+                    className="flex-1 text-sm text-[#0C1E35] outline-none placeholder:text-slate-400 bg-transparent"
+                  />
+                  {comboInput && (
+                    <button type="button" onMouseDown={() => { handleComboChange(''); setSpecialiteIdx(0); setTexteLibre('') }}
+                      className="text-slate-400 hover:text-slate-700 transition-colors flex-shrink-0">
+                      <X className="w-4 h-4" />
+                    </button>
+                  )}
+                </div>
+
+                {/* Liste des options */}
+                <div className="max-h-60 overflow-y-auto py-1">
+                  {filtered.length > 0 ? filtered.map((item) => (
+                    <button
+                      key={item.label}
+                      type="button"
+                      onMouseDown={() => selectOption(item)}
+                      className={`w-full text-left px-4 py-2.5 text-sm transition-colors flex items-center justify-between gap-2
+                        ${!item.isPredef ? 'text-slate-500 italic' : 'text-[#0C1E35]'}
+                        ${item.isPredef && item.idx === specialiteIdx && !texteLibre ? 'bg-[#00E5A0]/10 text-[#007A56] font-semibold' : 'hover:bg-[#F4F7FB]'}
+                      `}
+                    >
+                      <span>{item.label}</span>
+                      {!item.isPredef && <span className="text-[10px] text-slate-400 font-normal not-italic">Recherche libre</span>}
+                    </button>
+                  )) : (
+                    <button
+                      type="button"
+                      onMouseDown={() => { setTexteLibre(comboInput); setDropdownOpen(false) }}
+                      className="w-full text-left px-4 py-3 text-sm text-[#0C1E35] hover:bg-[#F4F7FB] transition-colors"
+                    >
+                      Rechercher <strong>&ldquo;{comboInput}&rdquo;</strong>
+                      <span className="ml-2 text-xs text-slate-400">Appuyez Entrée</span>
+                    </button>
+                  )}
+                </div>
+              </div>
             )}
           </div>
-          {texteLibre.trim() && (
-            <p className="text-[#00E5A0]/70 text-xs text-left px-1">
-              Recherche libre activée : <strong className="text-[#00E5A0]">&ldquo;{texteLibre.trim()}&rdquo;</strong> — OSM cherchera dans les noms et spécialités
-            </p>
-          )}
+
+          {/* Bouton rechercher */}
+          <button onClick={handleSearch} disabled={loading}
+            className="flex items-center justify-center gap-2 bg-[#00E5A0] text-[#060D1A] px-6 py-3 rounded-xl font-black text-sm hover:bg-[#00B87D] transition-colors disabled:opacity-60">
+            {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Search className="w-4 h-4" />}
+            {loading ? 'Recherche...' : 'Rechercher'}
+          </button>
         </div>
 
         {/* Indicateur de chargement en 2 étapes */}
