@@ -2,7 +2,13 @@
 // L'appel Overpass est fait côté browser pour éviter le timeout Vercel (10s)
 
 import { NextRequest, NextResponse } from 'next/server'
-import { createClient } from '@/lib/supabase-server'
+import { createClient } from '@supabase/supabase-js'
+
+// Client public statique — pas de cookies nécessaires pour cette route GET publique
+const supabase = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+)
 
 export async function GET(request: NextRequest) {
   try {
@@ -11,7 +17,6 @@ export async function GET(request: NextRequest) {
     const specialite = searchParams.get('specialite') || 'hospital'
     const q         = searchParams.get('q')         || '' // texte libre (ex: dialyse)
 
-    const supabase = await createClient()
     const { data: rawAll, error } = await supabase.from('cliniques').select('*').eq('actif', true)
     if (error) throw error
 
@@ -91,7 +96,7 @@ export async function GET(request: NextRequest) {
       })),
     })
   } catch (err: unknown) {
-    const message = err instanceof Error ? err.message : 'Erreur inconnue'
+    const message = err instanceof Error ? err.message : JSON.stringify(err)
     return NextResponse.json({ success: false, error: message }, { status: 500 })
   }
 }
