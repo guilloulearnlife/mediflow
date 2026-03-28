@@ -86,6 +86,8 @@ interface Clinique {
   inscrite: boolean
   specialites?: string[]
   distance?: number
+  medecins?: { id: string; nom: string | null; prenom: string | null }[]
+  slots_disponibles?: number
 }
 
 // ─── Utilitaires Overpass (browser-side) ─────────────────────────────────────
@@ -501,6 +503,34 @@ export default function RecherchePage() {
                   )}
                   {c.distance !== undefined && (
                     <p className="text-white/30 text-xs mt-1">{c.distance.toFixed(1)} km</p>
+                  )}
+                  {/* Médecins + créneaux (MediFlow uniquement) */}
+                  {c.inscrite && (
+                    <div className="mt-2 flex items-center gap-2 flex-wrap">
+                      {c.medecins && c.medecins.length > 0 && (
+                        <div className="flex items-center gap-1">
+                          {c.medecins.slice(0, 3).map(m => (
+                            <div key={m.id}
+                              title={`Dr. ${m.prenom ?? ''} ${m.nom ?? ''}`.trim()}
+                              className="w-5 h-5 rounded-full bg-[#00E5A0]/20 border border-[#00E5A0]/30 flex items-center justify-center text-[8px] font-bold text-[#00E5A0]">
+                              {`${m.prenom?.[0] ?? ''}${m.nom?.[0] ?? ''}`.toUpperCase() || '?'}
+                            </div>
+                          ))}
+                          <span className="text-white/40 text-[10px] ml-1">
+                            {c.medecins.length} médecin{c.medecins.length > 1 ? 's' : ''}
+                          </span>
+                        </div>
+                      )}
+                      {c.slots_disponibles !== undefined && (
+                        <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full ${
+                          c.slots_disponibles > 0
+                            ? 'bg-[#00E5A0]/10 text-[#00E5A0]'
+                            : 'bg-white/5 text-white/30'
+                        }`}>
+                          {c.slots_disponibles > 0 ? `${c.slots_disponibles} créneaux libres` : 'Complet aujourd\'hui'}
+                        </span>
+                      )}
+                    </div>
                   )}
                   {c.inscrite ? (
                     <Link

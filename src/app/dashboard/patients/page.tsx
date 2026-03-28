@@ -97,9 +97,9 @@ export default async function PatientsPage() {
                       {initials}
                     </div>
                     <div className="min-w-0">
-                      <p className="text-sm font-medium text-slate-900 truncate">
+                      <Link href={`/dashboard/patients/${patient.id}`} className="text-sm font-medium text-slate-900 hover:text-teal-600 truncate block transition-colors">
                         {patient.prenom} {patient.nom}
-                      </p>
+                      </Link>
                       <p className="text-xs text-slate-400 mt-0.5 flex items-center gap-1.5">
                         <Phone className="w-3 h-3 flex-shrink-0" />
                         <span className="truncate">{patient.telephone}</span>

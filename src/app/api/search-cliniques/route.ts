@@ -17,8 +17,29 @@ export async function GET(request: NextRequest) {
     const specialite = searchParams.get('specialite') || 'hospital'
     const q         = searchParams.get('q')         || '' // texte libre (ex: dialyse)
 
-    const { data: rawAll, error } = await supabase.from('cliniques').select('*').eq('actif', true)
+    const today = new Date().toISOString().split('T')[0]
+    const TOTAL_SLOTS = 15 // créneaux par jour
+
+    const [{ data: rawAll, error }, { data: rawMedecins }, { data: rawRdvs }] = await Promise.all([
+      supabase.from('cliniques').select('*').eq('actif', true),
+      supabase.from('profiles').select('id, clinique_id, nom, prenom').eq('role', 'medecin'),
+      supabase.from('rendez_vous').select('clinique_id').eq('date_rdv', today).eq('statut', 'confirme'),
+    ])
     if (error) throw error
+
+    // Index médecins par clinique
+    const medecinsByClinic: Record<string, { id: string; nom: string | null; prenom: string | null }[]> = {}
+    for (const m of rawMedecins ?? []) {
+      if (!m.clinique_id) continue
+      if (!medecinsByClinic[m.clinique_id]) medecinsByClinic[m.clinique_id] = []
+      medecinsByClinic[m.clinique_id].push({ id: m.id, nom: m.nom, prenom: m.prenom })
+    }
+
+    // RDV pris aujourd'hui par clinique
+    const rdvCountByClinic: Record<string, number> = {}
+    for (const r of rawRdvs ?? []) {
+      rdvCountByClinic[r.clinique_id] = (rdvCountByClinic[r.clinique_id] ?? 0) + 1
+    }
 
     // Filtre ville côté JS (insensible aux accents et à la casse)
     const norm = (s: string) => s.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '')
@@ -93,6 +114,8 @@ export async function GET(request: NextRequest) {
         specialites:     c.specialites ?? [],
         source:          'mediflow',
         inscrite:        true,
+        medecins:        medecinsByClinic[c.id] ?? [],
+        slots_disponibles: Math.max(0, TOTAL_SLOTS * Math.max(1, (medecinsByClinic[c.id]?.length ?? 1)) - (rdvCountByClinic[c.id] ?? 0)),
       })),
     })
   } catch (err: unknown) {
