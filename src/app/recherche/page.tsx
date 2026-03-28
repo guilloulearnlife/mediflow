@@ -490,11 +490,27 @@ export default function RecherchePage() {
                   {c.distance !== undefined && (
                     <p className="text-white/30 text-xs mt-1">{c.distance.toFixed(1)} km</p>
                   )}
-                  {c.inscrite && (
-                    <Link href={`/booking?clinique_id=${c.id}`} onClick={e => e.stopPropagation()}
+                  {c.inscrite ? (
+                    <Link
+                      href={`/booking?clinique_id=${c.id}&clinique_nom=${encodeURIComponent(c.nom)}&specialite=${encodeURIComponent(labelRecherche)}`}
+                      onClick={e => e.stopPropagation()}
                       className="mt-3 w-full flex items-center justify-center gap-1 bg-[#00E5A0] text-[#060D1A] text-xs font-black py-2 rounded-xl hover:bg-[#00B87D] transition-colors">
                       Prendre RDV <ArrowRight className="w-3 h-3" />
                     </Link>
+                  ) : (
+                    <div className="mt-3 flex gap-2" onClick={e => e.stopPropagation()}>
+                      {c.telephone && (
+                        <a href={`tel:${c.telephone}`}
+                          className="flex-1 flex items-center justify-center gap-1 bg-white/10 border border-white/20 text-white text-xs font-bold py-2 rounded-xl hover:bg-white/20 transition-colors">
+                          <Phone className="w-3 h-3" /> Appeler
+                        </a>
+                      )}
+                      <a href={`https://www.google.com/maps?q=${c.latitude},${c.longitude}`}
+                        target="_blank" rel="noopener noreferrer"
+                        className="flex-1 flex items-center justify-center gap-1 bg-white/10 border border-white/20 text-white text-xs font-bold py-2 rounded-xl hover:bg-white/20 transition-colors">
+                        <MapPin className="w-3 h-3" /> Maps
+                      </a>
+                    </div>
                   )}
                 </button>
               ))}
