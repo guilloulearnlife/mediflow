@@ -12,16 +12,15 @@ export async function GET(request: NextRequest) {
     const q         = searchParams.get('q')         || '' // texte libre (ex: dialyse)
 
     const supabase = await createClient()
-    let query = supabase.from('cliniques').select('*').eq('actif', true)
-
-    // Normalise la ville (retire accents) pour matcher "Yaounde" et "Yaoundé" indifféremment
-    if (ville.trim()) {
-      const villeNorm = ville.trim().normalize('NFD').replace(/[\u0300-\u036f]/g, '')
-      query = query.or(`ville.ilike.%${ville.trim()}%,ville.ilike.%${villeNorm}%`)
-    }
-
-    const { data: all, error } = await query
+    const { data: rawAll, error } = await supabase.from('cliniques').select('*').eq('actif', true)
     if (error) throw error
+
+    // Filtre ville côté JS (insensible aux accents et à la casse)
+    const norm = (s: string) => s.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+    const villeN = norm(ville.trim())
+    const all = villeN
+      ? (rawAll ?? []).filter(c => norm(c.ville ?? '').includes(villeN))
+      : (rawAll ?? [])
 
     // Catégories générales → retourne toutes les cliniques actives
     const GENERAL = ['all', 'hospital', 'hopital', 'urgences', 'clinique', '']
