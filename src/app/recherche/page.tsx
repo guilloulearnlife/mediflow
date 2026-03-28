@@ -91,22 +91,25 @@ interface Clinique {
 // ─── Utilitaires Overpass (browser-side) ─────────────────────────────────────
 
 function buildOverpassQuery(lat: number, lon: number, rayon: number, osmTags: string[]): string {
-  const blocks = osmTags.map(tag => {
+  // node + way uniquement (relations rares en Afrique), plus rapide que nwr
+  const blocks = osmTags.flatMap(tag => {
     const [k, v] = tag.split('=')
-    return `nwr["${k}"="${v}"](around:${rayon},${lat},${lon});`
+    return [
+      `node["${k}"="${v}"](around:${rayon},${lat},${lon});`,
+      `way["${k}"="${v}"](around:${rayon},${lat},${lon});`,
+    ]
   }).join('\n')
-  return `[out:json][timeout:25];\n(\n${blocks}\n);\nout body center;`
+  return `[out:json][timeout:20];\n(\n${blocks}\n);\nout body center;`
 }
 
 function buildOverpassQueryLibre(lat: number, lon: number, rayon: number, terme: string): string {
-  // Escape special regex chars sauf les lettres/chiffres
   const safe = terme.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
-  return `[out:json][timeout:30];
+  return `[out:json][timeout:20];
 (
-  nwr["name"~"${safe}",i]["amenity"~"hospital|clinic|doctors|pharmacy|laboratory"](around:${rayon},${lat},${lon});
-  nwr["name"~"${safe}",i]["healthcare"](around:${rayon},${lat},${lon});
-  nwr["healthcare:speciality"~"${safe}",i](around:${rayon},${lat},${lon});
-  nwr["description"~"${safe}",i]["amenity"~"hospital|clinic"](around:${rayon},${lat},${lon});
+  node["name"~"${safe}",i]["amenity"~"hospital|clinic|doctors|pharmacy"](around:${rayon},${lat},${lon});
+  way["name"~"${safe}",i]["amenity"~"hospital|clinic|doctors|pharmacy"](around:${rayon},${lat},${lon});
+  node["healthcare:speciality"~"${safe}",i](around:${rayon},${lat},${lon});
+  way["healthcare:speciality"~"${safe}",i](around:${rayon},${lat},${lon});
 );
 out body center;`
 }
@@ -133,35 +136,44 @@ function dice(a: string, b: string): number {
 
 async function fetchOverpass(lat: number, lon: number, rayon: number, osmTags: string[], texteLibre?: string): Promise<Clinique[]> {
   const tryQuery = async (query: string): Promise<Clinique[]> => {
-    const body = `data=${encodeURIComponent(query)}`
-    const res = await fetch('https://overpass-api.de/api/interpreter', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-      body,
-    })
-    if (!res.ok) return []
-    const data = await res.json()
-    return (data.elements ?? [])
-      .filter((e: Record<string,unknown>) => (e.tags as Record<string,string>)?.name)
-      .map((e: Record<string,unknown>) => {
-        const tags = e.tags as Record<string,string>
-        const elLat = (e.lat as number) ?? (e.center as {lat:number})?.lat ?? 0
-        const elLon = (e.lon as number) ?? (e.center as {lon:number})?.lon ?? 0
-        return {
-          id:       `osm_${e.type}_${e.id}`,
-          nom:      tags.name,
-          adresse:  [tags['addr:housenumber'], tags['addr:street'], tags['addr:city']].filter(Boolean).join(', '),
-          ville:    tags['addr:city'] ?? '',
-          latitude: elLat,
-          longitude:elLon,
-          telephone:tags['contact:phone'] ?? tags.phone,
-          source:   'openstreetmap' as const,
-          inscrite: false,
-          specialites: [tags.amenity, tags.healthcare, tags['healthcare:speciality']].filter(Boolean) as string[],
-          distance: calcDist(lat, lon, elLat, elLon) / 1000,
-        }
+    const controller = new AbortController()
+    const timer = setTimeout(() => controller.abort(), 22000) // 22s max
+    try {
+      const body = `data=${encodeURIComponent(query)}`
+      const res = await fetch('https://overpass-api.de/api/interpreter', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body,
+        signal: controller.signal,
       })
-      .filter((c: Clinique) => c.latitude !== 0 && c.longitude !== 0)
+      if (!res.ok) return []
+      const data = await res.json()
+      return (data.elements ?? [])
+        .filter((e: Record<string,unknown>) => (e.tags as Record<string,string>)?.name)
+        .map((e: Record<string,unknown>) => {
+          const tags = e.tags as Record<string,string>
+          const elLat = (e.lat as number) ?? (e.center as {lat:number})?.lat ?? 0
+          const elLon = (e.lon as number) ?? (e.center as {lon:number})?.lon ?? 0
+          return {
+            id:       `osm_${e.type}_${e.id}`,
+            nom:      tags.name,
+            adresse:  [tags['addr:housenumber'], tags['addr:street'], tags['addr:city']].filter(Boolean).join(', '),
+            ville:    tags['addr:city'] ?? '',
+            latitude: elLat,
+            longitude:elLon,
+            telephone:tags['contact:phone'] ?? tags.phone,
+            source:   'openstreetmap' as const,
+            inscrite: false,
+            specialites: [tags.amenity, tags.healthcare, tags['healthcare:speciality']].filter(Boolean) as string[],
+            distance: calcDist(lat, lon, elLat, elLon) / 1000,
+          }
+        })
+        .filter((c: Clinique) => c.latitude !== 0 && c.longitude !== 0)
+    } catch {
+      return []
+    } finally {
+      clearTimeout(timer)
+    }
   }
 
   // Mode texte libre : requête Overpass par regex sur nom + healthcare:speciality
@@ -288,7 +300,7 @@ export default function RecherchePage() {
     }).catch(() => {}).finally(() => setLoadingMF(false))
 
     // ── 2. Overpass depuis le browser (sans limite de timeout Vercel) ─────────
-    const osmPromise = fetchOverpass(coords.lat, coords.lon, 15000, specialite.osmTags, libre || undefined).then(osm => {
+    const osmPromise = fetchOverpass(coords.lat, coords.lon, 10000, specialite.osmTags, libre || undefined).then(osm => {
       setOsmCount(osm.length)
       setCliniques(prev => mergeResults(prev, osm, coords.lat, coords.lon))
     }).catch(e => {
