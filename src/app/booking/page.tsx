@@ -70,25 +70,12 @@ function BookingContent() {
         if (!resolvedCliniqueId) throw new Error('Aucune clinique disponible')
       }
 
-      // Créer ou retrouver le patient
-      let patient_id: string
-      const { data: existing } = await supabase
+      // Créer le patient — UUID généré côté client pour éviter .select() après insert (no SELECT policy anon)
+      const patient_id = crypto.randomUUID()
+      const { error: pErr } = await supabase
         .from('patients')
-        .select('id')
-        .eq('telephone', form.telephone)
-        .limit(1)
-
-      if (existing && existing.length > 0) {
-        patient_id = existing[0].id
-      } else {
-        const { data: newPatient, error: pErr } = await supabase
-          .from('patients')
-          .insert({ clinique_id: resolvedCliniqueId, nom: form.nom, prenom: form.prenom, telephone: form.telephone })
-          .select('id')
-          .single()
-        if (pErr) throw pErr
-        patient_id = newPatient.id
-      }
+        .insert({ id: patient_id, clinique_id: resolvedCliniqueId, nom: form.nom, prenom: form.prenom, telephone: form.telephone })
+      if (pErr) throw pErr
 
       // Créer le RDV
       const { error: rdvErr } = await supabase
@@ -98,8 +85,8 @@ function BookingContent() {
           patient_id,
           date_rdv:   form.date_rdv,
           heure_rdv:  form.heure_rdv,
-          specialite: form.specialite,   // colonne dédiée — permet le filtrage par spécialité
-          motif:      form.motif || null, // raison personnelle du patient (optionnelle)
+          specialite: form.specialite,
+          motif:      form.motif || null,
           statut:     'confirme',
         })
       if (rdvErr) throw rdvErr
