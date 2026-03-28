@@ -3,20 +3,29 @@ import Link from 'next/link'
 import MapWrapper from '@/components/MapWrapper'
 import HorairesClinik from '@/components/HorairesClinik'
 
-export default async function RecherchePage() {
+export default async function RecherchePage({
+  searchParams,
+}: {
+  searchParams: Promise<{ q?: string; ville?: string }>
+}) {
+  const { q = '', ville = '' } = await searchParams
   const supabase = await createClient()
 
-  const { data: cliniques } = await supabase
-    .from('cliniques')
-    .select('*')
-    .eq('actif', true)
+  let query = supabase.from('cliniques').select('*').eq('actif', true)
+  if (ville.trim()) query = query.ilike('ville', `%${ville.trim()}%`)
+  if (q.trim()) query = query.ilike('nom', `%${q.trim()}%`)
+
+  const { data: cliniques } = await query
 
   const { data: rdvMedecins } = await supabase
     .from('rendez_vous')
     .select('medecin')
     .neq('medecin', null)
 
-  const uniqueMedecins = [...new Set(rdvMedecins?.map(r => r.medecin).filter(Boolean))]
+  const allMedecins = [...new Set(rdvMedecins?.map(r => r.medecin).filter(Boolean))]
+  const uniqueMedecins = q.trim()
+    ? allMedecins.filter(m => m?.toLowerCase().includes(q.toLowerCase()))
+    : allMedecins
 
   return (
     <main className="min-h-screen bg-[#060D1A]">
@@ -47,18 +56,38 @@ export default async function RecherchePage() {
         <p className="text-white/50 text-lg mb-10">
           Prenez rendez-vous en ligne · Rappels automatiques WhatsApp
         </p>
-        <div className="max-w-2xl mx-auto bg-white rounded-2xl p-2 flex gap-2 shadow-2xl">
-          <input type="text" placeholder="Médecin, spécialité..."
-            className="flex-1 px-4 py-3 text-[#0C1E35] text-sm outline-none rounded-xl bg-[#F4F7FB]" />
-          <input type="text" placeholder="Ville..."
-            className="w-40 px-4 py-3 text-[#0C1E35] text-sm outline-none rounded-xl bg-[#F4F7FB]" />
-          <button className="bg-[#00E5A0] text-[#060D1A] px-6 py-3 rounded-xl font-black text-sm hover:bg-[#00B87D] transition-colors">
+        <form method="GET" action="/recherche" className="max-w-2xl mx-auto bg-white rounded-2xl p-2 flex gap-2 shadow-2xl">
+          <input
+            type="text"
+            name="q"
+            defaultValue={q}
+            placeholder="Médecin, spécialité..."
+            className="flex-1 px-4 py-3 text-[#0C1E35] text-sm outline-none rounded-xl bg-[#F4F7FB]"
+          />
+          <input
+            type="text"
+            name="ville"
+            defaultValue={ville}
+            placeholder="Ville..."
+            className="w-40 px-4 py-3 text-[#0C1E35] text-sm outline-none rounded-xl bg-[#F4F7FB]"
+          />
+          <button type="submit" className="bg-[#00E5A0] text-[#060D1A] px-6 py-3 rounded-xl font-black text-sm hover:bg-[#00B87D] transition-colors">
             Rechercher
           </button>
-        </div>
+        </form>
       </div>
 
       <div className="px-8 pb-8 max-w-7xl mx-auto">
+        {(q || ville) && (
+          <div className="mb-6 flex items-center gap-3">
+            <span className="text-white/50 text-sm">
+              {cliniques?.length ?? 0} résultat{(cliniques?.length ?? 0) !== 1 ? 's' : ''} pour
+              {q && <strong className="text-white ml-1">&quot;{q}&quot;</strong>}
+              {ville && <span className="text-white/50 ml-1">à <strong className="text-white">{ville}</strong></span>}
+            </span>
+            <a href="/recherche" className="text-[#00E5A0] text-xs hover:underline">Effacer</a>
+          </div>
+        )}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-12">
 
           {/* CARTE */}
