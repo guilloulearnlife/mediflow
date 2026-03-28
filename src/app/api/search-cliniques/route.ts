@@ -10,12 +10,24 @@ const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
 )
 
+function calcDistKm(lat1: number, lon1: number, lat2: number, lon2: number): number {
+  const R = 6371, toRad = (d: number) => d * Math.PI / 180
+  const dLat = toRad(lat2 - lat1), dLon = toRad(lon2 - lon1)
+  const a = Math.sin(dLat/2)**2 + Math.cos(toRad(lat1))*Math.cos(toRad(lat2))*Math.sin(dLon/2)**2
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a))
+}
+
 export async function GET(request: NextRequest) {
   try {
     const { searchParams } = request.nextUrl
-    const ville     = searchParams.get('ville')     || 'Yaoundé'
     const specialite = searchParams.get('specialite') || 'hospital'
-    const q         = searchParams.get('q')         || '' // texte libre (ex: dialyse)
+    const q          = searchParams.get('q')          || '' // texte libre
+    // Nouveau : coordonnées + rayon km (priorité sur ville)
+    const latParam   = searchParams.get('lat')
+    const lonParam   = searchParams.get('lon')
+    const rayonKm    = parseFloat(searchParams.get('rayon') || '10')
+    // Fallback legacy : filtre par nom de ville
+    const ville      = searchParams.get('ville')      || ''
 
     const today = new Date().toISOString().split('T')[0]
     const TOTAL_SLOTS = 15 // créneaux par jour
@@ -41,14 +53,29 @@ export async function GET(request: NextRequest) {
       rdvCountByClinic[r.clinique_id] = (rdvCountByClinic[r.clinique_id] ?? 0) + 1
     }
 
-    // Filtre ville côté JS (insensible aux accents et à la casse)
     const norm = (s: string) => s.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '')
-    const villeN = norm(ville.trim())
-    const all = villeN
-      ? (rawAll ?? []).filter(c => norm(c.ville ?? '').includes(villeN))
-      : (rawAll ?? [])
 
-    // Catégories générales → retourne toutes les cliniques actives
+    // ── Filtre géographique ──────────────────────────────────────────────────
+    let all: typeof rawAll
+    if (latParam && lonParam) {
+      // Mode coordonnées + rayon km (priorité)
+      const refLat = parseFloat(latParam)
+      const refLon = parseFloat(lonParam)
+      all = (rawAll ?? []).filter(c => {
+        const lat = parseFloat(c.latitude)
+        const lon = parseFloat(c.longitude)
+        if (!lat || !lon) return false
+        return calcDistKm(refLat, refLon, lat, lon) <= rayonKm
+      })
+    } else {
+      // Mode legacy : filtre par nom de ville
+      const villeN = norm(ville.trim())
+      all = villeN
+        ? (rawAll ?? []).filter(c => norm(c.ville ?? '').includes(villeN))
+        : (rawAll ?? [])
+    }
+
+    // Catégories générales → retourne toutes les cliniques
     const GENERAL = ['all', 'hospital', 'hopital', 'urgences', 'clinique', '']
 
     // Mapping valeur dropdown → mots-clés à chercher dans specialites[]
@@ -80,10 +107,8 @@ export async function GET(request: NextRequest) {
     } else {
       const specialiteLower = specialite.toLowerCase()
       if (GENERAL.includes(specialiteLower)) {
-        // Catégorie générale → toutes les cliniques
         cliniques = all
       } else {
-        // Recherche par mots-clés (FR normalisé) + valeur brute
         const keywords = KEYWORD_MAP[specialiteLower] ?? [specialiteLower]
         cliniques = (all ?? []).filter(c => {
           const specs = (c.specialites as string[] | null) ?? []

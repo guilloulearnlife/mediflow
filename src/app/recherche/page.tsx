@@ -3,7 +3,7 @@
 import { useState, useCallback, useRef, useEffect } from 'react'
 import Link from 'next/link'
 import dynamic from 'next/dynamic'
-import { Search, MapPin, Phone, ArrowRight, CheckCircle, Loader2, ChevronDown, X } from 'lucide-react'
+import { Search, MapPin, Phone, ArrowRight, CheckCircle, Loader2, ChevronDown, X, Navigation } from 'lucide-react'
 
 const MapRechercheHybride = dynamic(() => import('@/components/MapRechercheHybride'), {
   ssr: false,
@@ -72,6 +72,8 @@ const SPECIALITES = [
   { value: 'kinesitherapie', label: 'Kinésithérapie',          osmTags: ['healthcare=physiotherapist','amenity=clinic'] },
 ]
 
+const RAYONS = [2, 5, 10, 20, 50] // km
+
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 interface Clinique {
@@ -90,10 +92,33 @@ interface Clinique {
   slots_disponibles?: number
 }
 
+interface LocationCoords {
+  lat: number
+  lon: number
+  label: string
+}
+
+// ─── Géocodage Nominatim ──────────────────────────────────────────────────────
+
+async function geocodeNominatim(query: string): Promise<LocationCoords | null> {
+  try {
+    const q = encodeURIComponent(`${query}, Cameroun`)
+    const res = await fetch(
+      `https://nominatim.openstreetmap.org/search?q=${q}&format=json&limit=1&countrycodes=cm`,
+      { headers: { 'Accept-Language': 'fr' } }
+    )
+    if (!res.ok) return null
+    const data = await res.json()
+    if (!data || data.length === 0) return null
+    return { lat: parseFloat(data[0].lat), lon: parseFloat(data[0].lon), label: data[0].display_name?.split(',')[0] ?? query }
+  } catch {
+    return null
+  }
+}
+
 // ─── Utilitaires Overpass (browser-side) ─────────────────────────────────────
 
 function buildOverpassQuery(lat: number, lon: number, rayon: number, osmTags: string[]): string {
-  // node + way uniquement (relations rares en Afrique), plus rapide que nwr
   const blocks = osmTags.flatMap(tag => {
     const [k, v] = tag.split('=')
     return [
@@ -139,7 +164,7 @@ function dice(a: string, b: string): number {
 async function fetchOverpass(lat: number, lon: number, rayon: number, osmTags: string[], texteLibre?: string): Promise<Clinique[]> {
   const tryQuery = async (query: string): Promise<Clinique[]> => {
     const controller = new AbortController()
-    const timer = setTimeout(() => controller.abort(), 22000) // 22s max
+    const timer = setTimeout(() => controller.abort(), 22000)
     try {
       const body = `data=${encodeURIComponent(query)}`
       const res = await fetch('https://overpass-api.de/api/interpreter', {
@@ -178,28 +203,23 @@ async function fetchOverpass(lat: number, lon: number, rayon: number, osmTags: s
     }
   }
 
-  // Mode texte libre : requête Overpass par regex sur nom + healthcare:speciality
   if (texteLibre && texteLibre.trim().length >= 2) {
     const results = await tryQuery(buildOverpassQueryLibre(lat, lon, rayon, texteLibre.trim()))
-    // Fallback large si rien trouvé avec le terme exact
     if (results.length === 0) {
       return await tryQuery(buildOverpassQuery(lat, lon, rayon, ['amenity=hospital', 'amenity=clinic', 'amenity=doctors']))
     }
     return results
   }
 
-  // Mode tags standards
   const results = await tryQuery(buildOverpassQuery(lat, lon, rayon, osmTags))
-  // Fallback si 0 résultats : essaie avec les tags healthcare génériques
   if (results.length === 0) {
     return await tryQuery(buildOverpassQuery(lat, lon, rayon, ['amenity=hospital', 'amenity=clinic', 'amenity=doctors']))
   }
   return results
 }
 
-// ─── Composant principal ──────────────────────────────────────────────────────
+// ─── Suggestions supplémentaires ─────────────────────────────────────────────
 
-// Suggestions supplémentaires non présentes dans SPECIALITES
 const EXTRA_SUGGESTIONS = [
   'Dialyse','Oncologie','Neurologie','ORL','Urologie',
   'Orthopédie','Psychiatrie','Endocrinologie','Pneumologie',
@@ -207,37 +227,95 @@ const EXTRA_SUGGESTIONS = [
   'Infectiologie','Chirurgie générale','Réanimation',
 ]
 
+// ─── Composant principal ──────────────────────────────────────────────────────
+
 export default function RecherchePage() {
-  const [villeKey, setVilleKey]           = useState('Yaoundé')
-  const [specialiteIdx, setSpecialiteIdx] = useState(1) // "Hôpitaux"
-  const [texteLibre, setTexteLibre]       = useState('')
-  // Combobox
-  const [dropdownOpen, setDropdownOpen]   = useState(false)
-  const [comboInput, setComboInput]       = useState(SPECIALITES[1].label)
-  const comboRef                          = useRef<HTMLDivElement>(null)
-  const inputRef                          = useRef<HTMLInputElement>(null)
+  // ── Location ───────────────────────────────────────────────────────────────
+  const [locationInput, setLocationInput]       = useState('Yaoundé')
+  const [locationCoords, setLocationCoords]     = useState<LocationCoords>({ lat: 3.8667, lon: 11.5167, label: 'Yaoundé' })
+  const [locSuggestions, setLocSuggestions]     = useState<string[]>([])
+  const [showLocSugg, setShowLocSugg]           = useState(false)
+  const [geocoding, setGeocoding]               = useState(false)
+  const locRef                                  = useRef<HTMLDivElement>(null)
 
-  const [loadingMF, setLoadingMF]         = useState(false)
-  const [loadingOSM, setLoadingOSM]       = useState(false)
-  const [cliniques, setCliniques]         = useState<Clinique[]>([])
-  const [osmCount, setOsmCount]           = useState(0)
-  const [mfCount, setMfCount]             = useState(0)
-  const [error, setError]                 = useState('')
-  const [selected, setSelected]           = useState<Clinique | null>(null)
-  const [searched, setSearched]           = useState(false)
+  // ── Rayon ──────────────────────────────────────────────────────────────────
+  const [rayon, setRayon]                       = useState(10) // km
 
-  // Fermer le dropdown si clic à l'extérieur
+  // ── Spécialité ────────────────────────────────────────────────────────────
+  const [specialiteIdx, setSpecialiteIdx]       = useState(1)
+  const [texteLibre, setTexteLibre]             = useState('')
+  const [dropdownOpen, setDropdownOpen]         = useState(false)
+  const [comboInput, setComboInput]             = useState(SPECIALITES[1].label)
+  const comboRef                                = useRef<HTMLDivElement>(null)
+  const inputRef                                = useRef<HTMLInputElement>(null)
+
+  // ── Résultats ─────────────────────────────────────────────────────────────
+  const [loadingMF, setLoadingMF]               = useState(false)
+  const [loadingOSM, setLoadingOSM]             = useState(false)
+  const [cliniques, setCliniques]               = useState<Clinique[]>([])
+  const [osmCount, setOsmCount]                 = useState(0)
+  const [mfCount, setMfCount]                   = useState(0)
+  const [error, setError]                       = useState('')
+  const [selected, setSelected]                 = useState<Clinique | null>(null)
+  const [searched, setSearched]                 = useState(false)
+
+  // ── Fermer dropdowns si clic extérieur ────────────────────────────────────
   useEffect(() => {
     function onMouseDown(e: MouseEvent) {
-      if (comboRef.current && !comboRef.current.contains(e.target as Node)) {
-        setDropdownOpen(false)
-      }
+      if (comboRef.current && !comboRef.current.contains(e.target as Node)) setDropdownOpen(false)
+      if (locRef.current && !locRef.current.contains(e.target as Node)) setShowLocSugg(false)
     }
     document.addEventListener('mousedown', onMouseDown)
     return () => document.removeEventListener('mousedown', onMouseDown)
   }, [])
 
-  // Suggestions filtrées (prédéfinies + extras)
+  // ── Autocomplétion localisation ───────────────────────────────────────────
+  function handleLocationChange(val: string) {
+    setLocationInput(val)
+    if (!val.trim()) {
+      setLocSuggestions([])
+      setShowLocSugg(false)
+      return
+    }
+    const norm = (s: string) => s.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+    const matches = Object.keys(VILLES).filter(v => norm(v).includes(norm(val))).slice(0, 6)
+    setLocSuggestions(matches)
+    setShowLocSugg(matches.length > 0)
+  }
+
+  function selectLocation(villeKey: string) {
+    setLocationInput(villeKey)
+    setLocationCoords({ ...VILLES[villeKey], label: villeKey })
+    setLocSuggestions([])
+    setShowLocSugg(false)
+  }
+
+  // ── Géolocalisation GPS ───────────────────────────────────────────────────
+  function useGPS() {
+    if (!navigator.geolocation) return
+    setGeocoding(true)
+    navigator.geolocation.getCurrentPosition(
+      async (pos) => {
+        const { latitude: lat, longitude: lon } = pos.coords
+        // Reverse geocode pour le label
+        try {
+          const res = await fetch(`https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lon}&format=json&accept-language=fr`)
+          const data = await res.json()
+          const label = data.address?.suburb ?? data.address?.city_district ?? data.address?.city ?? 'Ma position'
+          setLocationInput(label)
+          setLocationCoords({ lat, lon, label })
+        } catch {
+          setLocationInput('Ma position')
+          setLocationCoords({ lat, lon, label: 'Ma position' })
+        }
+        setGeocoding(false)
+      },
+      () => setGeocoding(false),
+      { timeout: 8000 }
+    )
+  }
+
+  // ── Spécialité combobox ───────────────────────────────────────────────────
   const allSuggestions = [
     ...SPECIALITES.map((s, i) => ({ label: s.label, idx: i, isPredef: true })),
     ...EXTRA_SUGGESTIONS
@@ -250,33 +328,23 @@ export default function RecherchePage() {
 
   function selectOption(item: typeof allSuggestions[0]) {
     setComboInput(item.label)
-    if (item.isPredef && item.idx >= 0) {
-      setSpecialiteIdx(item.idx)
-      setTexteLibre('')
-    } else {
-      setTexteLibre(item.label)
-    }
+    if (item.isPredef && item.idx >= 0) { setSpecialiteIdx(item.idx); setTexteLibre('') }
+    else setTexteLibre(item.label)
     setDropdownOpen(false)
   }
 
   function handleComboChange(val: string) {
     setComboInput(val)
     const match = SPECIALITES.findIndex(s => s.label.toLowerCase() === val.toLowerCase())
-    if (match >= 0) {
-      setSpecialiteIdx(match)
-      setTexteLibre('')
-    } else {
-      setTexteLibre(val)
-    }
+    if (match >= 0) { setSpecialiteIdx(match); setTexteLibre('') }
+    else setTexteLibre(val)
   }
 
-  const specialite = SPECIALITES[specialiteIdx]
+  const specialite    = SPECIALITES[specialiteIdx]
   const labelRecherche = texteLibre.trim() || specialite.label
 
+  // ── Recherche ─────────────────────────────────────────────────────────────
   const handleSearch = useCallback(async () => {
-    const coords = VILLES[villeKey]
-    if (!coords) return
-
     setLoadingMF(true)
     setLoadingOSM(true)
     setError('')
@@ -286,23 +354,49 @@ export default function RecherchePage() {
     setOsmCount(0)
     setMfCount(0)
 
+    // Résoudre les coordonnées
+    let coords = locationCoords
+    const matchKey = Object.keys(VILLES).find(v => v.toLowerCase() === locationInput.toLowerCase().trim())
+    if (matchKey) {
+      coords = { ...VILLES[matchKey], label: matchKey }
+      setLocationCoords(coords)
+    } else if (locationInput.trim() && locationInput.trim() !== locationCoords.label) {
+      setGeocoding(true)
+      const geocoded = await geocodeNominatim(locationInput.trim())
+      setGeocoding(false)
+      if (geocoded) {
+        coords = geocoded
+        setLocationCoords(geocoded)
+        setLocationInput(geocoded.label)
+      } else {
+        setError(`Lieu introuvable : "${locationInput}". Essayez un nom de ville ou quartier connu.`)
+        setLoadingMF(false)
+        setLoadingOSM(false)
+        return
+      }
+    }
+
+    const rayonMetres = rayon * 1000
     const libre = texteLibre.trim()
 
-    // ── 1. Supabase (rapide) ──────────────────────────────────────────────────
+    // ── 1. MediFlow (Supabase) ────────────────────────────────────────────
     const apiUrl = libre
-      ? `/api/search-cliniques?ville=${encodeURIComponent(villeKey)}&q=${encodeURIComponent(libre)}`
-      : `/api/search-cliniques?ville=${encodeURIComponent(villeKey)}&specialite=${specialite.value}`
+      ? `/api/search-cliniques?lat=${coords.lat}&lon=${coords.lon}&rayon=${rayon}&q=${encodeURIComponent(libre)}`
+      : `/api/search-cliniques?lat=${coords.lat}&lon=${coords.lon}&rayon=${rayon}&specialite=${specialite.value}`
 
     const mfPromise = fetch(apiUrl).then(r => r.json()).then(data => {
       if (data.success) {
-        const mf: Clinique[] = data.cliniques
+        const mf: Clinique[] = data.cliniques.map((c: Clinique) => ({
+          ...c,
+          distance: calcDist(coords.lat, coords.lon, c.latitude, c.longitude) / 1000,
+        }))
         setMfCount(mf.length)
         setCliniques(prev => mergeResults(prev, mf, coords.lat, coords.lon))
       }
     }).catch(() => {}).finally(() => setLoadingMF(false))
 
-    // ── 2. Overpass depuis le browser (sans limite de timeout Vercel) ─────────
-    const osmPromise = fetchOverpass(coords.lat, coords.lon, 10000, specialite.osmTags, libre || undefined).then(osm => {
+    // ── 2. Overpass (OSM) ─────────────────────────────────────────────────
+    const osmPromise = fetchOverpass(coords.lat, coords.lon, rayonMetres, specialite.osmTags, libre || undefined).then(osm => {
       setOsmCount(osm.length)
       setCliniques(prev => mergeResults(prev, osm, coords.lat, coords.lon))
     }).catch(e => {
@@ -311,9 +405,10 @@ export default function RecherchePage() {
     }).finally(() => setLoadingOSM(false))
 
     await Promise.allSettled([mfPromise, osmPromise])
-  }, [villeKey, specialite, texteLibre])
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [locationInput, locationCoords, rayon, specialite, texteLibre])
 
-  const loading = loadingMF || loadingOSM
+  const loading = loadingMF || loadingOSM || geocoding
 
   return (
     <main className="min-h-screen bg-[#060D1A]">
@@ -339,93 +434,163 @@ export default function RecherchePage() {
           Trouvez votre <span className="text-[#00E5A0]">médecin</span>
         </h1>
         <p className="text-white/50 text-lg mb-10">
-          Choisissez votre ville et la spécialité pour voir tous les établissements à proximité
+          Entrez votre ville, quartier ou adresse — puis choisissez la spécialité et la distance
         </p>
 
-        <div className="max-w-2xl mx-auto bg-white rounded-2xl p-2 flex flex-col sm:flex-row gap-2 shadow-2xl">
-          {/* Ville */}
-          <select value={villeKey} onChange={e => setVilleKey(e.target.value)}
-            className="flex-1 px-4 py-3 text-[#0C1E35] text-sm outline-none rounded-xl bg-[#F4F7FB] cursor-pointer">
-            {Object.keys(VILLES).sort().map(v => (
-              <option key={v} value={v}>{v}</option>
-            ))}
-          </select>
+        {/* ── Barre de recherche ── */}
+        <div className="max-w-3xl mx-auto space-y-3">
 
-          {/* Combobox spécialité */}
-          <div className="flex-1 relative" ref={comboRef}>
-            <button
-              type="button"
-              onClick={() => { setDropdownOpen(v => !v); setTimeout(() => inputRef.current?.focus(), 10) }}
-              className="w-full px-4 py-3 text-[#0C1E35] text-sm rounded-xl bg-[#F4F7FB] flex items-center justify-between gap-2 hover:bg-[#e8edf5] transition-colors"
-            >
-              <span className="truncate text-left">{comboInput || 'Spécialité…'}</span>
-              <ChevronDown className={`w-4 h-4 text-[#0C1E35]/40 flex-shrink-0 transition-transform ${dropdownOpen ? 'rotate-180' : ''}`} />
-            </button>
+          {/* Ligne 1 : Localisation + Spécialité + Bouton */}
+          <div className="bg-white rounded-2xl p-2 flex flex-col sm:flex-row gap-2 shadow-2xl">
 
-            {dropdownOpen && (
-              <div className="absolute top-full left-0 right-0 mt-1 bg-white rounded-2xl shadow-2xl border border-slate-100 z-50 overflow-hidden">
-                {/* Input de recherche */}
-                <div className="p-2 border-b border-slate-100 flex items-center gap-2">
-                  <Search className="w-4 h-4 text-slate-400 flex-shrink-0 ml-1" />
-                  <input
-                    ref={inputRef}
-                    type="text"
-                    value={comboInput}
-                    onChange={e => handleComboChange(e.target.value)}
-                    onKeyDown={e => {
-                      if (e.key === 'Enter') { setDropdownOpen(false); handleSearch() }
-                      if (e.key === 'Escape') setDropdownOpen(false)
-                    }}
-                    placeholder="Tapez une spécialité… (ex: dialyse, ORL)"
-                    className="flex-1 text-sm text-[#0C1E35] outline-none placeholder:text-slate-400 bg-transparent"
-                  />
-                  {comboInput && (
-                    <button type="button" onMouseDown={() => { handleComboChange(''); setSpecialiteIdx(0); setTexteLibre('') }}
-                      className="text-slate-400 hover:text-slate-700 transition-colors flex-shrink-0">
-                      <X className="w-4 h-4" />
-                    </button>
-                  )}
-                </div>
-
-                {/* Liste des options */}
-                <div className="max-h-60 overflow-y-auto py-1">
-                  {filtered.length > 0 ? filtered.map((item) => (
-                    <button
-                      key={item.label}
-                      type="button"
-                      onMouseDown={() => selectOption(item)}
-                      className={`w-full text-left px-4 py-2.5 text-sm transition-colors flex items-center justify-between gap-2
-                        ${!item.isPredef ? 'text-slate-500 italic' : 'text-[#0C1E35]'}
-                        ${item.isPredef && item.idx === specialiteIdx && !texteLibre ? 'bg-[#00E5A0]/10 text-[#007A56] font-semibold' : 'hover:bg-[#F4F7FB]'}
-                      `}
-                    >
-                      <span>{item.label}</span>
-                      {!item.isPredef && <span className="text-[10px] text-slate-400 font-normal not-italic">Recherche libre</span>}
-                    </button>
-                  )) : (
+            {/* Localisation (ville / quartier) */}
+            <div className="flex-1 relative" ref={locRef}>
+              <div className="flex items-center gap-2 px-3 py-2.5 bg-[#F4F7FB] rounded-xl">
+                <MapPin className="w-4 h-4 text-[#0C1E35]/40 flex-shrink-0" />
+                <input
+                  type="text"
+                  value={locationInput}
+                  onChange={e => handleLocationChange(e.target.value)}
+                  onFocus={() => locationInput && setShowLocSugg(locSuggestions.length > 0)}
+                  onKeyDown={e => {
+                    if (e.key === 'Enter') { setShowLocSugg(false); handleSearch() }
+                    if (e.key === 'Escape') setShowLocSugg(false)
+                  }}
+                  placeholder="Ville, quartier, adresse…"
+                  className="flex-1 text-sm text-[#0C1E35] outline-none placeholder:text-[#0C1E35]/40 bg-transparent min-w-0"
+                />
+                {geocoding
+                  ? <Loader2 className="w-4 h-4 text-[#00E5A0] animate-spin flex-shrink-0" />
+                  : (
                     <button
                       type="button"
-                      onMouseDown={() => { setTexteLibre(comboInput); setDropdownOpen(false) }}
-                      className="w-full text-left px-4 py-3 text-sm text-[#0C1E35] hover:bg-[#F4F7FB] transition-colors"
+                      onClick={useGPS}
+                      title="Utiliser ma position GPS"
+                      className="text-[#0C1E35]/40 hover:text-[#00E5A0] transition-colors flex-shrink-0"
                     >
-                      Rechercher <strong>&ldquo;{comboInput}&rdquo;</strong>
-                      <span className="ml-2 text-xs text-slate-400">Appuyez Entrée</span>
+                      <Navigation className="w-4 h-4" />
                     </button>
-                  )}
-                </div>
+                  )
+                }
               </div>
-            )}
+
+              {/* Suggestions localisation */}
+              {showLocSugg && locSuggestions.length > 0 && (
+                <div className="absolute top-full left-0 right-0 mt-1 bg-white rounded-2xl shadow-2xl border border-slate-100 z-50 py-1 overflow-hidden">
+                  {locSuggestions.map(v => (
+                    <button
+                      key={v}
+                      type="button"
+                      onMouseDown={() => selectLocation(v)}
+                      className="w-full text-left px-4 py-2.5 text-sm text-[#0C1E35] hover:bg-[#F4F7FB] flex items-center gap-2"
+                    >
+                      <MapPin className="w-3.5 h-3.5 text-slate-400 flex-shrink-0" />
+                      {v}
+                    </button>
+                  ))}
+                  {/* Option geocoder le terme libre */}
+                  {!Object.keys(VILLES).some(v => v.toLowerCase() === locationInput.toLowerCase()) && (
+                    <button
+                      type="button"
+                      onMouseDown={() => { setShowLocSugg(false); handleSearch() }}
+                      className="w-full text-left px-4 py-2.5 text-sm text-[#00E5A0] hover:bg-[#F4F7FB] flex items-center gap-2 border-t border-slate-100"
+                    >
+                      <Search className="w-3.5 h-3.5 flex-shrink-0" />
+                      Rechercher <strong className="ml-1">&ldquo;{locationInput}&rdquo;</strong>
+                    </button>
+                  )}
+                </div>
+              )}
+            </div>
+
+            {/* Combobox spécialité */}
+            <div className="flex-1 relative" ref={comboRef}>
+              <button
+                type="button"
+                onClick={() => { setDropdownOpen(v => !v); setTimeout(() => inputRef.current?.focus(), 10) }}
+                className="w-full px-4 py-3 text-[#0C1E35] text-sm rounded-xl bg-[#F4F7FB] flex items-center justify-between gap-2 hover:bg-[#e8edf5] transition-colors"
+              >
+                <span className="truncate text-left">{comboInput || 'Spécialité…'}</span>
+                <ChevronDown className={`w-4 h-4 text-[#0C1E35]/40 flex-shrink-0 transition-transform ${dropdownOpen ? 'rotate-180' : ''}`} />
+              </button>
+
+              {dropdownOpen && (
+                <div className="absolute top-full left-0 right-0 mt-1 bg-white rounded-2xl shadow-2xl border border-slate-100 z-50 overflow-hidden">
+                  <div className="p-2 border-b border-slate-100 flex items-center gap-2">
+                    <Search className="w-4 h-4 text-slate-400 flex-shrink-0 ml-1" />
+                    <input
+                      ref={inputRef}
+                      type="text"
+                      value={comboInput}
+                      onChange={e => handleComboChange(e.target.value)}
+                      onKeyDown={e => {
+                        if (e.key === 'Enter') { setDropdownOpen(false); handleSearch() }
+                        if (e.key === 'Escape') setDropdownOpen(false)
+                      }}
+                      placeholder="Tapez une spécialité… (ex: dialyse, ORL)"
+                      className="flex-1 text-sm text-[#0C1E35] outline-none placeholder:text-slate-400 bg-transparent"
+                    />
+                    {comboInput && (
+                      <button type="button" onMouseDown={() => { handleComboChange(''); setSpecialiteIdx(0); setTexteLibre('') }}
+                        className="text-slate-400 hover:text-slate-700 transition-colors flex-shrink-0">
+                        <X className="w-4 h-4" />
+                      </button>
+                    )}
+                  </div>
+                  <div className="max-h-60 overflow-y-auto py-1">
+                    {filtered.length > 0 ? filtered.map((item) => (
+                      <button
+                        key={item.label}
+                        type="button"
+                        onMouseDown={() => selectOption(item)}
+                        className={`w-full text-left px-4 py-2.5 text-sm transition-colors flex items-center justify-between gap-2
+                          ${!item.isPredef ? 'text-slate-500 italic' : 'text-[#0C1E35]'}
+                          ${item.isPredef && item.idx === specialiteIdx && !texteLibre ? 'bg-[#00E5A0]/10 text-[#007A56] font-semibold' : 'hover:bg-[#F4F7FB]'}
+                        `}
+                      >
+                        <span>{item.label}</span>
+                        {!item.isPredef && <span className="text-[10px] text-slate-400 font-normal not-italic">Recherche libre</span>}
+                      </button>
+                    )) : (
+                      <button type="button" onMouseDown={() => { setTexteLibre(comboInput); setDropdownOpen(false) }}
+                        className="w-full text-left px-4 py-3 text-sm text-[#0C1E35] hover:bg-[#F4F7FB] transition-colors">
+                        Rechercher <strong>&ldquo;{comboInput}&rdquo;</strong>
+                        <span className="ml-2 text-xs text-slate-400">Appuyez Entrée</span>
+                      </button>
+                    )}
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Bouton rechercher */}
+            <button onClick={handleSearch} disabled={loading}
+              className="flex items-center justify-center gap-2 bg-[#00E5A0] text-[#060D1A] px-6 py-3 rounded-xl font-black text-sm hover:bg-[#00B87D] transition-colors disabled:opacity-60">
+              {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Search className="w-4 h-4" />}
+              {loading ? 'Recherche...' : 'Rechercher'}
+            </button>
           </div>
 
-          {/* Bouton rechercher */}
-          <button onClick={handleSearch} disabled={loading}
-            className="flex items-center justify-center gap-2 bg-[#00E5A0] text-[#060D1A] px-6 py-3 rounded-xl font-black text-sm hover:bg-[#00B87D] transition-colors disabled:opacity-60">
-            {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Search className="w-4 h-4" />}
-            {loading ? 'Recherche...' : 'Rechercher'}
-          </button>
+          {/* Ligne 2 : Filtre distance */}
+          <div className="flex items-center justify-center gap-2 flex-wrap">
+            <span className="text-white/30 text-xs font-medium mr-1">Rayon :</span>
+            {RAYONS.map(r => (
+              <button
+                key={r}
+                onClick={() => setRayon(r)}
+                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
+                  rayon === r
+                    ? 'bg-[#00E5A0] text-[#060D1A]'
+                    : 'bg-white/5 border border-white/10 text-white/50 hover:bg-white/10 hover:text-white'
+                }`}
+              >
+                {r} km
+              </button>
+            ))}
+          </div>
         </div>
 
-        {/* Indicateur de chargement en 2 étapes */}
+        {/* Indicateur de chargement */}
         {searched && (
           <div className="mt-5 flex items-center justify-center gap-5 text-xs text-white/40">
             <span className={`flex items-center gap-1.5 ${loadingMF ? 'text-white/60' : 'text-white/40'}`}>
@@ -474,7 +639,8 @@ export default function RecherchePage() {
             {/* Liste 1/3 */}
             <div className="flex flex-col gap-3 overflow-y-auto" style={{ maxHeight: '520px' }}>
               <h2 className="text-white font-bold text-sm sticky top-0 bg-[#060D1A] py-1">
-                {cliniques.length} résultat{cliniques.length > 1 ? 's' : ''} · {labelRecherche} à {villeKey}
+                {cliniques.length} résultat{cliniques.length > 1 ? 's' : ''} · {labelRecherche}
+                <span className="text-white/40 font-normal ml-1">à {rayon} km de {locationCoords.label}</span>
                 {loadingOSM && <span className="ml-2 text-white/30 font-normal text-xs">+ OSM en cours...</span>}
               </h2>
               {cliniques.map(c => (
@@ -564,21 +730,22 @@ export default function RecherchePage() {
       {searched && !loading && cliniques.length === 0 && (
         <div className="text-center py-16 text-white/30">
           <Search className="w-10 h-10 mx-auto mb-3 opacity-40" />
-          <p className="text-lg">Aucun établissement trouvé pour &ldquo;{labelRecherche}&rdquo; à {villeKey}</p>
-          <p className="text-sm mt-2">Essayez une autre ville, une autre spécialité, ou reformulez votre recherche</p>
+          <p className="text-lg">Aucun établissement trouvé pour &ldquo;{labelRecherche}&rdquo;</p>
+          <p className="text-sm mt-2">à {rayon} km de {locationCoords.label}</p>
+          <p className="text-sm mt-1 text-white/20">Essayez un rayon plus grand ou reformulez votre recherche</p>
         </div>
       )}
 
       {!searched && (
         <div className="text-center pb-16">
-          <p className="text-white/20 text-sm">Sélectionnez une ville et une spécialité, puis cliquez sur Rechercher</p>
+          <p className="text-white/20 text-sm">Entrez votre localisation, sélectionnez une spécialité et cliquez sur Rechercher</p>
         </div>
       )}
     </main>
   )
 }
 
-// ─── Fusion des résultats (déduplique par nom+distance) ───────────────────────
+// ─── Fusion des résultats ─────────────────────────────────────────────────────
 
 function mergeResults(existing: Clinique[], incoming: Clinique[], refLat: number, refLon: number): Clinique[] {
   const combined = [...existing]
@@ -590,7 +757,6 @@ function mergeResults(existing: Clinique[], incoming: Clinique[], refLat: number
     if (dupIdx === -1) {
       combined.push(c)
     } else if (c.inscrite && !combined[dupIdx].inscrite) {
-      // La version MediFlow remplace toujours l'entrée OSM homonyme
       combined[dupIdx] = c
     }
   }
@@ -602,4 +768,3 @@ function mergeResults(existing: Clinique[], incoming: Clinique[], refLat: number
     return da - db
   })
 }
-
