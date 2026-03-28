@@ -144,24 +144,24 @@ export default function RegisterPage() {
                 </div>
 
                 <div>
-                  <label className="block text-xs font-semibold text-[#0C1E35] mb-1.5 uppercase tracking-wide">Nom de l'établissement *</label>
-                  <input name="nomClinique" value={form.nomClinique} onChange={handleChange} required
+                  <label htmlFor="nomClinique" className="block text-xs font-semibold text-[#0C1E35] mb-1.5 uppercase tracking-wide">Nom de l'établissement *</label>
+                  <input id="nomClinique" name="nomClinique" autoComplete="organization" value={form.nomClinique} onChange={handleChange} required
                     placeholder="Ex : Clinique du Lac, Hôpital Central…"
                     className="w-full px-4 py-3 border border-[#E2EAF4] rounded-xl text-sm text-[#0C1E35] outline-none focus:border-[#0BA896] transition-colors" />
                 </div>
 
                 <div className="grid grid-cols-2 gap-4">
                   <div>
-                    <label className="block text-xs font-semibold text-[#0C1E35] mb-1.5 uppercase tracking-wide">Type *</label>
-                    <select name="type" value={form.type} onChange={handleChange} required
+                    <label htmlFor="type" className="block text-xs font-semibold text-[#0C1E35] mb-1.5 uppercase tracking-wide">Type *</label>
+                    <select id="type" name="type" autoComplete="off" value={form.type} onChange={handleChange} required
                       className="w-full px-4 py-3 border border-[#E2EAF4] rounded-xl text-sm text-[#0C1E35] outline-none focus:border-[#0BA896] transition-colors bg-white">
                       <option value="">Choisir…</option>
                       {TYPES.map(t => <option key={t} value={t}>{t}</option>)}
                     </select>
                   </div>
                   <div>
-                    <label className="block text-xs font-semibold text-[#0C1E35] mb-1.5 uppercase tracking-wide">Ville *</label>
-                    <select name="ville" value={form.ville} onChange={handleChange} required
+                    <label htmlFor="ville" className="block text-xs font-semibold text-[#0C1E35] mb-1.5 uppercase tracking-wide">Ville *</label>
+                    <select id="ville" name="ville" autoComplete="address-level2" value={form.ville} onChange={handleChange} required
                       className="w-full px-4 py-3 border border-[#E2EAF4] rounded-xl text-sm text-[#0C1E35] outline-none focus:border-[#0BA896] transition-colors bg-white">
                       <option value="">Choisir…</option>
                       {VILLES.map(v => <option key={v} value={v}>{v}</option>)}
@@ -170,17 +170,17 @@ export default function RegisterPage() {
                 </div>
 
                 <div>
-                  <label className="block text-xs font-semibold text-[#0C1E35] mb-1.5 uppercase tracking-wide">Adresse</label>
-                  <input name="adresse" value={form.adresse} onChange={handleChange}
+                  <label htmlFor="adresse" className="block text-xs font-semibold text-[#0C1E35] mb-1.5 uppercase tracking-wide">Adresse</label>
+                  <input id="adresse" name="adresse" autoComplete="street-address" value={form.adresse} onChange={handleChange}
                     placeholder="Rue, quartier…"
                     className="w-full px-4 py-3 border border-[#E2EAF4] rounded-xl text-sm text-[#0C1E35] outline-none focus:border-[#0BA896] transition-colors" />
                 </div>
 
                 <div>
-                  <label className="block text-xs font-semibold text-[#0C1E35] mb-1.5 uppercase tracking-wide">Téléphone *</label>
+                  <label htmlFor="telephone" className="block text-xs font-semibold text-[#0C1E35] mb-1.5 uppercase tracking-wide">Téléphone *</label>
                   <div className="flex gap-3">
                     <div className="bg-[#F4F7FB] border border-[#E2EAF4] rounded-xl px-4 py-3 text-sm text-[#64748B] flex-shrink-0">+237</div>
-                    <input name="telephone" value={form.telephone} onChange={handleChange} required
+                    <input id="telephone" name="telephone" autoComplete="tel" value={form.telephone} onChange={handleChange} required
                       placeholder="677 123 456"
                       className="flex-1 px-4 py-3 border border-[#E2EAF4] rounded-xl text-sm text-[#0C1E35] outline-none focus:border-[#0BA896] transition-colors" />
                   </div>
@@ -208,36 +208,36 @@ export default function RegisterPage() {
 
                 <div className="grid grid-cols-2 gap-4">
                   <div>
-                    <label className="block text-xs font-semibold text-[#0C1E35] mb-1.5 uppercase tracking-wide">Nom *</label>
-                    <input name="nom" value={form.nom} onChange={handleChange} required
+                    <label htmlFor="nom" className="block text-xs font-semibold text-[#0C1E35] mb-1.5 uppercase tracking-wide">Nom *</label>
+                    <input id="nom" name="nom" autoComplete="family-name" value={form.nom} onChange={handleChange} required
                       placeholder="Nkomo"
                       className="w-full px-4 py-3 border border-[#E2EAF4] rounded-xl text-sm text-[#0C1E35] outline-none focus:border-[#0BA896] transition-colors" />
                   </div>
                   <div>
-                    <label className="block text-xs font-semibold text-[#0C1E35] mb-1.5 uppercase tracking-wide">Prénom *</label>
-                    <input name="prenom" value={form.prenom} onChange={handleChange} required
+                    <label htmlFor="prenom" className="block text-xs font-semibold text-[#0C1E35] mb-1.5 uppercase tracking-wide">Prénom *</label>
+                    <input id="prenom" name="prenom" autoComplete="given-name" value={form.prenom} onChange={handleChange} required
                       placeholder="Jean"
                       className="w-full px-4 py-3 border border-[#E2EAF4] rounded-xl text-sm text-[#0C1E35] outline-none focus:border-[#0BA896] transition-colors" />
                   </div>
                 </div>
 
                 <div>
-                  <label className="block text-xs font-semibold text-[#0C1E35] mb-1.5 uppercase tracking-wide">Email professionnel *</label>
-                  <input name="email" type="email" value={form.email} onChange={handleChange} required
+                  <label htmlFor="email" className="block text-xs font-semibold text-[#0C1E35] mb-1.5 uppercase tracking-wide">Email professionnel *</label>
+                  <input id="email" name="email" type="email" autoComplete="email" value={form.email} onChange={handleChange} required
                     placeholder="directeur@ma-clinique.cm"
                     className="w-full px-4 py-3 border border-[#E2EAF4] rounded-xl text-sm text-[#0C1E35] outline-none focus:border-[#0BA896] transition-colors" />
                 </div>
 
                 <div>
-                  <label className="block text-xs font-semibold text-[#0C1E35] mb-1.5 uppercase tracking-wide">Mot de passe *</label>
-                  <input name="password" type="password" value={form.password} onChange={handleChange} required
+                  <label htmlFor="password" className="block text-xs font-semibold text-[#0C1E35] mb-1.5 uppercase tracking-wide">Mot de passe *</label>
+                  <input id="password" name="password" type="password" autoComplete="new-password" value={form.password} onChange={handleChange} required
                     placeholder="Minimum 8 caractères"
                     className="w-full px-4 py-3 border border-[#E2EAF4] rounded-xl text-sm text-[#0C1E35] outline-none focus:border-[#0BA896] transition-colors" />
                 </div>
 
                 <div>
-                  <label className="block text-xs font-semibold text-[#0C1E35] mb-1.5 uppercase tracking-wide">Confirmer le mot de passe *</label>
-                  <input name="confirm" type="password" value={form.confirm} onChange={handleChange} required
+                  <label htmlFor="confirm" className="block text-xs font-semibold text-[#0C1E35] mb-1.5 uppercase tracking-wide">Confirmer le mot de passe *</label>
+                  <input id="confirm" name="confirm" type="password" autoComplete="new-password" value={form.confirm} onChange={handleChange} required
                     placeholder="••••••••"
                     className="w-full px-4 py-3 border border-[#E2EAF4] rounded-xl text-sm text-[#0C1E35] outline-none focus:border-[#0BA896] transition-colors" />
                 </div>

@@ -71,11 +71,13 @@ export default function LoginPage() {
 
           <form onSubmit={handleLogin} className="flex flex-col gap-4">
             <div>
-              <label className="block text-sm font-600 text-[#0C1E35] mb-2">
+              <label htmlFor="email" className="block text-sm font-600 text-[#0C1E35] mb-2">
                 Email
               </label>
               <input
+                id="email"
                 type="email"
+                autoComplete="email"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 placeholder="vous@clinique.cm"
@@ -85,11 +87,13 @@ export default function LoginPage() {
             </div>
 
             <div>
-              <label className="block text-sm font-600 text-[#0C1E35] mb-2">
+              <label htmlFor="password" className="block text-sm font-600 text-[#0C1E35] mb-2">
                 Mot de passe
               </label>
               <input
+                id="password"
                 type="password"
+                autoComplete="current-password"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 placeholder="••••••••"
