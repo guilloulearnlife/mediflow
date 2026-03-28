@@ -541,11 +541,16 @@ export default function RecherchePage() {
 function mergeResults(existing: Clinique[], incoming: Clinique[], refLat: number, refLon: number): Clinique[] {
   const combined = [...existing]
   for (const c of incoming) {
-    const dup = combined.some(e =>
+    const dupIdx = combined.findIndex(e =>
       dice(normStr(c.nom), normStr(e.nom)) > 0.7 &&
       calcDist(c.latitude, c.longitude, e.latitude, e.longitude) < 100
     )
-    if (!dup) combined.push(c)
+    if (dupIdx === -1) {
+      combined.push(c)
+    } else if (c.inscrite && !combined[dupIdx].inscrite) {
+      // La version MediFlow remplace toujours l'entrée OSM homonyme
+      combined[dupIdx] = c
+    }
   }
   return combined.sort((a, b) => {
     if (a.inscrite && !b.inscrite) return -1

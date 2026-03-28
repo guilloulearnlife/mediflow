@@ -14,7 +14,11 @@ export async function GET(request: NextRequest) {
     const supabase = await createClient()
     let query = supabase.from('cliniques').select('*').eq('actif', true)
 
-    if (ville.trim()) query = query.ilike('ville', `%${ville.trim()}%`)
+    // Normalise la ville (retire accents) pour matcher "Yaounde" et "Yaoundé" indifféremment
+    if (ville.trim()) {
+      const villeNorm = ville.trim().normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+      query = query.or(`ville.ilike.%${ville.trim()}%,ville.ilike.%${villeNorm}%`)
+    }
 
     const { data: all, error } = await query
     if (error) throw error
