@@ -4,6 +4,16 @@ import { useState } from 'react'
 import { createClient } from '@/lib/supabase'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
+import { ArrowLeft, CalendarPlus, Check } from 'lucide-react'
+
+const HEURES = [
+  '08:00','08:30','09:00','09:30','10:00','10:30','11:00','11:30',
+  '14:00','14:30','15:00','15:30','16:00','16:30','17:00',
+]
+
+const MEDECINS = [
+  'Dr. Kamga', 'Dr. Tchinda', 'Dr. Mbarga', 'Dr. Nguema', 'Dr. Fomba',
+]
 
 export default function NouveauRdvPage() {
   const router = useRouter()
@@ -27,12 +37,10 @@ export default function NouveauRdvPage() {
     setError('')
 
     try {
-      // 1. Récupérer la clinique
       const { data: cliniques } = await supabase.from('cliniques').select('id').limit(1)
       const clinique_id = cliniques?.[0]?.id
       if (!clinique_id) throw new Error('Aucune clinique trouvée')
 
-      // 2. Créer ou trouver le patient
       let patient_id: string
       const { data: existingPatients } = await supabase
         .from('patients')
@@ -52,7 +60,6 @@ export default function NouveauRdvPage() {
         patient_id = newPatient.id
       }
 
-      // 3. Créer le RDV
       const { error: rdvError } = await supabase
         .from('rendez_vous')
         .insert({
@@ -76,98 +83,124 @@ export default function NouveauRdvPage() {
     }
   }
 
+  const inputClass = "w-full px-3 py-2.5 border border-slate-200 rounded-lg text-sm text-slate-900 bg-white outline-none focus:border-teal-500 focus:ring-1 focus:ring-teal-500/20 transition-all placeholder:text-slate-400"
+
   return (
-    <main className="min-h-screen bg-[#F4F7FB]">
-      <div className="bg-white border-b border-[#E2EAF4] px-8 py-4 flex items-center justify-between">
-        <div>
-          <h1 className="text-xl font-black text-[#0C1E35]">
-            Medi<span className="text-[#0BA896]">Flow</span>
-            <span className="text-[#64748B] font-normal text-base ml-3">· Nouveau RDV</span>
-          </h1>
+    <main className="min-h-screen bg-slate-50">
+
+      {/* Top bar */}
+      <div className="bg-white border-b border-slate-200 px-8 py-4 flex items-center justify-between">
+        <div className="flex items-center gap-3">
+          <div className="w-7 h-7 rounded-md bg-teal-50 border border-teal-200 flex items-center justify-center flex-shrink-0">
+            <CalendarPlus className="w-3.5 h-3.5 text-teal-600" />
+          </div>
+          <div>
+            <span className="text-sm font-semibold text-slate-900">Nouveau rendez-vous</span>
+          </div>
         </div>
-        <Link href="/dashboard/rdv" className="text-sm text-[#64748B] hover:text-[#0BA896]">
-          ← Retour
+        <Link
+          href="/dashboard/rdv"
+          className="inline-flex items-center gap-1.5 text-xs font-medium text-slate-500 hover:text-slate-900 transition-colors"
+        >
+          <ArrowLeft className="w-3.5 h-3.5" />
+          Retour
         </Link>
       </div>
 
-      <div className="p-8 max-w-2xl mx-auto">
-        <div className="bg-white border border-[#E2EAF4] rounded-2xl p-8 shadow-sm">
-          <h2 className="text-2xl font-black text-[#0C1E35] mb-6">Créer un rendez-vous</h2>
+      <div className="max-w-xl mx-auto px-8 py-8">
 
-          {error && (
-            <div className="bg-red-50 border border-red-200 text-red-600 text-sm px-4 py-3 rounded-lg mb-6">
-              {error}
-            </div>
-          )}
+        {error && (
+          <div className="bg-red-50 border border-red-200 text-red-600 text-sm px-4 py-3 rounded-lg mb-6">
+            {error}
+          </div>
+        )}
 
-          <form onSubmit={handleSubmit} className="flex flex-col gap-5">
+        <form onSubmit={handleSubmit} className="flex flex-col gap-6">
 
-            <div className="grid grid-cols-2 gap-4">
-              <div>
-                <label className="block text-sm font-bold text-[#0C1E35] mb-2">Nom *</label>
-                <input name="nom" value={form.nom} onChange={handleChange} required
-                  placeholder="Nkomo"
-                  className="w-full px-4 py-3 border border-[#E2EAF4] rounded-xl text-sm text-[#0C1E35] outline-none focus:border-[#0BA896] transition-colors" />
+          {/* Patient */}
+          <div className="bg-white border border-slate-200 rounded-xl shadow-[0_1px_3px_0_rgb(0,0,0,0.04)] p-6">
+            <h2 className="text-xs font-semibold uppercase tracking-widest text-slate-400 mb-5">
+              Informations patient
+            </h2>
+            <div className="flex flex-col gap-4">
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-xs font-medium text-slate-600 mb-1.5">Nom <span className="text-slate-400">*</span></label>
+                  <input
+                    name="nom" value={form.nom} onChange={handleChange} required
+                    placeholder="Nkomo"
+                    className={inputClass}
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-slate-600 mb-1.5">Prénom <span className="text-slate-400">*</span></label>
+                  <input
+                    name="prenom" value={form.prenom} onChange={handleChange} required
+                    placeholder="Jean-Baptiste"
+                    className={inputClass}
+                  />
+                </div>
               </div>
               <div>
-                <label className="block text-sm font-bold text-[#0C1E35] mb-2">Prénom *</label>
-                <input name="prenom" value={form.prenom} onChange={handleChange} required
-                  placeholder="Jean-Baptiste"
-                  className="w-full px-4 py-3 border border-[#E2EAF4] rounded-xl text-sm text-[#0C1E35] outline-none focus:border-[#0BA896] transition-colors" />
+                <label className="block text-xs font-medium text-slate-600 mb-1.5">Téléphone <span className="text-slate-400">*</span></label>
+                <input
+                  name="telephone" value={form.telephone} onChange={handleChange} required
+                  placeholder="677 123 456"
+                  className={inputClass}
+                />
               </div>
             </div>
+          </div>
 
-            <div>
-              <label className="block text-sm font-bold text-[#0C1E35] mb-2">Téléphone *</label>
-              <input name="telephone" value={form.telephone} onChange={handleChange} required
-                placeholder="677123456"
-                className="w-full px-4 py-3 border border-[#E2EAF4] rounded-xl text-sm text-[#0C1E35] outline-none focus:border-[#0BA896] transition-colors" />
-            </div>
-
-            <div className="grid grid-cols-2 gap-4">
-              <div>
-                <label className="block text-sm font-bold text-[#0C1E35] mb-2">Date *</label>
-                <input name="date_rdv" type="date" value={form.date_rdv} onChange={handleChange} required
-                  className="w-full px-4 py-3 border border-[#E2EAF4] rounded-xl text-sm text-[#0C1E35] outline-none focus:border-[#0BA896] transition-colors" />
+          {/* RDV */}
+          <div className="bg-white border border-slate-200 rounded-xl shadow-[0_1px_3px_0_rgb(0,0,0,0.04)] p-6">
+            <h2 className="text-xs font-semibold uppercase tracking-widest text-slate-400 mb-5">
+              Détails du rendez-vous
+            </h2>
+            <div className="flex flex-col gap-4">
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-xs font-medium text-slate-600 mb-1.5">Date <span className="text-slate-400">*</span></label>
+                  <input
+                    name="date_rdv" type="date" value={form.date_rdv} onChange={handleChange} required
+                    className={inputClass}
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-slate-600 mb-1.5">Heure <span className="text-slate-400">*</span></label>
+                  <select name="heure_rdv" value={form.heure_rdv} onChange={handleChange} className={inputClass}>
+                    {HEURES.map(h => <option key={h} value={h}>{h}</option>)}
+                  </select>
+                </div>
               </div>
               <div>
-                <label className="block text-sm font-bold text-[#0C1E35] mb-2">Heure *</label>
-                <select name="heure_rdv" value={form.heure_rdv} onChange={handleChange}
-                  className="w-full px-4 py-3 border border-[#E2EAF4] rounded-xl text-sm text-[#0C1E35] outline-none focus:border-[#0BA896] transition-colors">
-                  {['08:00','08:30','09:00','09:30','10:00','10:30','11:00','11:30',
-                    '14:00','14:30','15:00','15:30','16:00','16:30','17:00'].map(h => (
-                    <option key={h} value={h}>{h}</option>
-                  ))}
+                <label className="block text-xs font-medium text-slate-600 mb-1.5">Médecin <span className="text-slate-400">*</span></label>
+                <select name="medecin" value={form.medecin} onChange={handleChange} className={inputClass}>
+                  {MEDECINS.map(m => <option key={m} value={m}>{m}</option>)}
                 </select>
               </div>
+              <div>
+                <label className="block text-xs font-medium text-slate-600 mb-1.5">Motif de consultation</label>
+                <textarea
+                  name="motif" value={form.motif} onChange={handleChange}
+                  placeholder="Bilan cardiaque, suivi hypertension..."
+                  rows={3}
+                  className={`${inputClass} resize-none`}
+                />
+              </div>
             </div>
+          </div>
 
-            <div>
-              <label className="block text-sm font-bold text-[#0C1E35] mb-2">Médecin *</label>
-              <select name="medecin" value={form.medecin} onChange={handleChange}
-                className="w-full px-4 py-3 border border-[#E2EAF4] rounded-xl text-sm text-[#0C1E35] outline-none focus:border-[#0BA896] transition-colors">
-                <option>Dr. Kamga</option>
-                <option>Dr. Tchinda</option>
-                <option>Dr. Mbarga</option>
-                <option>Dr. Nguema</option>
-                <option>Dr. Fomba</option>
-              </select>
-            </div>
+          <button
+            type="submit"
+            disabled={loading}
+            className="w-full flex items-center justify-center gap-2 bg-teal-600 hover:bg-teal-700 disabled:opacity-50 text-white py-3 rounded-lg text-sm font-medium transition-colors duration-150"
+          >
+            <Check className="w-4 h-4" />
+            {loading ? 'Création en cours...' : 'Créer le rendez-vous'}
+          </button>
 
-            <div>
-              <label className="block text-sm font-bold text-[#0C1E35] mb-2">Motif de consultation</label>
-              <textarea name="motif" value={form.motif} onChange={handleChange}
-                placeholder="Bilan cardiaque, suivi hypertension..."
-                rows={3}
-                className="w-full px-4 py-3 border border-[#E2EAF4] rounded-xl text-sm text-[#0C1E35] outline-none focus:border-[#0BA896] transition-colors resize-none" />
-            </div>
-
-            <button type="submit" disabled={loading}
-              className="w-full bg-[#0BA896] text-white py-4 rounded-xl font-black text-base hover:bg-[#097A6E] transition-colors disabled:opacity-50 mt-2">
-              {loading ? 'Création en cours...' : '✓ Créer le rendez-vous'}
-            </button>
-          </form>
-        </div>
+        </form>
       </div>
     </main>
   )

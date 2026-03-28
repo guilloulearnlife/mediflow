@@ -4,6 +4,16 @@ import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { createClient } from '@/lib/supabase'
 import { useRouter } from 'next/navigation'
+import {
+  LayoutDashboard,
+  Calendar,
+  CalendarPlus,
+  Users,
+  Stethoscope,
+  Settings,
+  LogOut,
+  type LucideIcon,
+} from 'lucide-react'
 
 export type Role = 'super_admin' | 'directeur' | 'gerant' | 'secretaire' | 'medecin'
 
@@ -14,54 +24,60 @@ interface NavbarProps {
   nomPrenom?: string
 }
 
-const navItems: Record<Role, { href: string; label: string; icon: string }[]> = {
+interface NavItem {
+  href: string
+  label: string
+  Icon: LucideIcon
+}
+
+const navItems: Record<Role, NavItem[]> = {
   super_admin: [
-    { href: '/dashboard', label: 'Dashboard', icon: '📊' },
-    { href: '/dashboard/rdv', label: 'Rendez-vous', icon: '📅' },
-    { href: '/dashboard/rdv/nouveau', label: 'Nouveau RDV', icon: '➕' },
-    { href: '/dashboard/patients', label: 'Patients', icon: '👥' },
-    { href: '/dashboard/medecin', label: 'Médecins', icon: '🧑‍⚕️' },
-    { href: '/dashboard/admin', label: 'Admin', icon: '⚙️' },
+    { href: '/dashboard',               label: 'Dashboard',      Icon: LayoutDashboard },
+    { href: '/dashboard/rdv',           label: 'Rendez-vous',    Icon: Calendar },
+    { href: '/dashboard/rdv/nouveau',   label: 'Nouveau RDV',    Icon: CalendarPlus },
+    { href: '/dashboard/patients',      label: 'Patients',       Icon: Users },
+    { href: '/dashboard/medecin',       label: 'Médecins',       Icon: Stethoscope },
+    { href: '/dashboard/admin',         label: 'Admin',          Icon: Settings },
   ],
   directeur: [
-    { href: '/dashboard', label: 'Dashboard', icon: '📊' },
-    { href: '/dashboard/rdv', label: 'Rendez-vous', icon: '📅' },
-    { href: '/dashboard/patients', label: 'Patients', icon: '👥' },
-    { href: '/dashboard/medecin', label: 'Médecins', icon: '🧑‍⚕️' },
+    { href: '/dashboard',           label: 'Dashboard',    Icon: LayoutDashboard },
+    { href: '/dashboard/rdv',       label: 'Rendez-vous',  Icon: Calendar },
+    { href: '/dashboard/patients',  label: 'Patients',     Icon: Users },
+    { href: '/dashboard/medecin',   label: 'Médecins',     Icon: Stethoscope },
   ],
   gerant: [
-    { href: '/dashboard', label: 'Dashboard', icon: '📊' },
-    { href: '/dashboard/rdv', label: 'Rendez-vous', icon: '📅' },
-    { href: '/dashboard/rdv/nouveau', label: 'Nouveau RDV', icon: '➕' },
-    { href: '/dashboard/patients', label: 'Patients', icon: '👥' },
+    { href: '/dashboard',             label: 'Dashboard',    Icon: LayoutDashboard },
+    { href: '/dashboard/rdv',         label: 'Rendez-vous',  Icon: Calendar },
+    { href: '/dashboard/rdv/nouveau', label: 'Nouveau RDV',  Icon: CalendarPlus },
+    { href: '/dashboard/patients',    label: 'Patients',     Icon: Users },
   ],
   secretaire: [
-    { href: '/dashboard', label: 'Dashboard', icon: '📊' },
-    { href: '/dashboard/rdv', label: 'Rendez-vous', icon: '📅' },
-    { href: '/dashboard/rdv/nouveau', label: 'Nouveau RDV', icon: '➕' },
-    { href: '/dashboard/patients', label: 'Patients', icon: '👥' },
+    { href: '/dashboard',             label: 'Dashboard',    Icon: LayoutDashboard },
+    { href: '/dashboard/rdv',         label: 'Rendez-vous',  Icon: Calendar },
+    { href: '/dashboard/rdv/nouveau', label: 'Nouveau RDV',  Icon: CalendarPlus },
+    { href: '/dashboard/patients',    label: 'Patients',     Icon: Users },
   ],
   medecin: [
-    { href: '/dashboard/medecin', label: 'Mon espace', icon: '🩺' },
-    { href: '/dashboard/rdv', label: 'Rendez-vous', icon: '📅' },
-    { href: '/dashboard/patients', label: 'Patients', icon: '👥' },
+    { href: '/dashboard/medecin',  label: 'Mon espace',    Icon: Stethoscope },
+    { href: '/dashboard/rdv',      label: 'Rendez-vous',   Icon: Calendar },
+    { href: '/dashboard/patients', label: 'Patients',      Icon: Users },
   ],
 }
 
 const roleLabels: Record<Role, string> = {
   super_admin: 'Super Admin',
-  directeur: 'Directeur',
-  gerant: 'Gérant',
-  secretaire: 'Secrétaire',
-  medecin: 'Médecin',
+  directeur:   'Directeur',
+  gerant:      'Gérant',
+  secretaire:  'Secrétaire',
+  medecin:     'Médecin',
 }
 
-const roleColors: Record<Role, string> = {
-  super_admin: 'text-purple-400',
-  directeur: 'text-blue-400',
-  gerant: 'text-yellow-400',
-  secretaire: 'text-[#0BA896]',
-  medecin: 'text-[#C8773A]',
+const roleBadgeStyles: Record<Role, string> = {
+  super_admin: 'bg-violet-500/15 text-violet-300',
+  directeur:   'bg-blue-500/15 text-blue-300',
+  gerant:      'bg-amber-500/15 text-amber-300',
+  secretaire:  'bg-teal-500/15 text-teal-300',
+  medecin:     'bg-sky-500/15 text-sky-300',
 }
 
 export default function Navbar({ email, role, cliniqueName, nomPrenom }: NavbarProps) {
@@ -75,44 +91,69 @@ export default function Navbar({ email, role, cliniqueName, nomPrenom }: NavbarP
   }
 
   const items = navItems[role] ?? navItems.secretaire
+  const displayName = nomPrenom || email.split('@')[0]
+  const initials = displayName.split(' ').map((n: string) => n[0]).join('').slice(0, 2).toUpperCase()
 
   return (
-    <div className="bg-[#0C1E35] text-white flex items-center justify-between px-6 py-3 sticky top-0 z-50 shadow-lg">
+    <header className="bg-slate-950 border-b border-white/[0.06] sticky top-0 z-50">
+      <div className="flex items-center justify-between h-14 px-6">
 
-      <div className="flex items-center gap-6">
-        <Link href="/dashboard" className="text-lg font-black">
-          Medi<span className="text-[#0BA896]">Flow</span>
-        </Link>
-        {cliniqueName && (
-          <span className="text-white/30 text-sm hidden md:block">· {cliniqueName}</span>
-        )}
-      </div>
-
-      <nav className="flex items-center gap-1">
-        {items.map((item) => {
-          const isActive = pathname === item.href
-          return (
-            <Link key={item.href} href={item.href}
-              className={`flex items-center gap-2 px-4 py-2 rounded-xl text-sm transition-all ${
-                isActive ? 'bg-[#0BA896] text-white' : 'text-white/50 hover:text-white hover:bg-white/10'
-              }`}>
-              <span>{item.icon}</span>
-              <span className="hidden md:block">{item.label}</span>
-            </Link>
-          )
-        })}
-      </nav>
-
-      <div className="flex items-center gap-3">
-        <div className="hidden md:block text-right">
-          <div className="text-xs text-white/40">{nomPrenom ?? email}</div>
-          <div className={`text-xs font-bold ${roleColors[role]}`}>{roleLabels[role]}</div>
+        {/* Left: Logo + clinic */}
+        <div className="flex items-center gap-3 min-w-[160px]">
+          <Link href="/dashboard" className="text-sm font-semibold tracking-tight text-white">
+            Medi<span className="text-teal-400">Flow</span>
+          </Link>
+          {cliniqueName && (
+            <>
+              <span className="text-white/20 text-sm">/</span>
+              <span className="text-white/40 text-xs truncate max-w-[120px]">{cliniqueName}</span>
+            </>
+          )}
         </div>
-        <button onClick={handleLogout}
-          className="bg-white/5 border border-white/10 text-white/60 px-3 py-2 rounded-xl text-xs font-bold hover:bg-red-500/20 hover:text-red-400 hover:border-red-500/30 transition-all">
-          Déconnexion
-        </button>
+
+        {/* Center: Nav items */}
+        <nav className="flex items-center gap-0.5">
+          {items.map(({ href, label, Icon }) => {
+            const isActive = pathname === href
+            return (
+              <Link
+                key={href}
+                href={href}
+                className={`flex items-center gap-2 px-3 py-2 rounded-lg text-xs font-medium transition-all duration-150 ${
+                  isActive
+                    ? 'bg-white/10 text-white'
+                    : 'text-white/40 hover:text-white/80 hover:bg-white/5'
+                }`}
+              >
+                <Icon className="w-3.5 h-3.5 flex-shrink-0" />
+                <span className="hidden md:block">{label}</span>
+              </Link>
+            )
+          })}
+        </nav>
+
+        {/* Right: User info + logout */}
+        <div className="flex items-center gap-3 min-w-[160px] justify-end">
+          <div className="hidden md:flex items-center gap-2.5">
+            <div className="w-7 h-7 rounded-full bg-teal-500/20 border border-teal-500/30 flex items-center justify-center text-teal-400 text-xs font-semibold flex-shrink-0">
+              {initials}
+            </div>
+            <div className="text-right">
+              <div className="text-xs text-white/60 leading-tight truncate max-w-[100px]">{displayName}</div>
+              <div className={`text-[10px] font-medium px-1.5 py-0.5 rounded mt-0.5 inline-block ${roleBadgeStyles[role]}`}>
+                {roleLabels[role]}
+              </div>
+            </div>
+          </div>
+          <button
+            onClick={handleLogout}
+            className="flex items-center gap-1.5 text-white/30 hover:text-red-400 transition-colors duration-150 p-2 rounded-lg hover:bg-red-500/10"
+            title="Déconnexion"
+          >
+            <LogOut className="w-3.5 h-3.5" />
+          </button>
+        </div>
       </div>
-    </div>
+    </header>
   )
 }

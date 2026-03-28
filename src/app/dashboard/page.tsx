@@ -2,6 +2,30 @@ import { createClient } from '@/lib/supabase-server'
 import { redirect } from 'next/navigation'
 import { getProfile } from '@/lib/profile'
 import Navbar from '@/components/Navbar'
+import { CalendarDays, CheckCircle2, Clock, UserX, TrendingUp, TrendingDown } from 'lucide-react'
+
+const statusConfig = {
+  confirme: {
+    label: 'Confirmé',
+    classes: 'bg-blue-50 text-blue-700 border border-blue-200',
+    dot: 'bg-blue-500',
+  },
+  termine: {
+    label: 'Terminé',
+    classes: 'bg-emerald-50 text-emerald-700 border border-emerald-200',
+    dot: 'bg-emerald-500',
+  },
+  annule: {
+    label: 'Annulé',
+    classes: 'bg-slate-50 text-slate-500 border border-slate-200',
+    dot: 'bg-slate-400',
+  },
+  absent: {
+    label: 'Absent',
+    classes: 'bg-red-50 text-red-600 border border-red-200',
+    dot: 'bg-red-500',
+  },
+}
 
 export default async function DashboardPage() {
   const supabase = await createClient()
@@ -11,11 +35,7 @@ export default async function DashboardPage() {
   const profile = await getProfile()
   const role = profile?.role ?? 'secretaire'
 
-  const { data: cliniques } = await supabase
-    .from('cliniques')
-    .select('*')
-    .limit(1)
-
+  const { data: cliniques } = await supabase.from('cliniques').select('*').limit(1)
   const clinique = cliniques?.[0]
 
   const today = new Date().toISOString().split('T')[0]
@@ -25,21 +45,20 @@ export default async function DashboardPage() {
     .eq('date_rdv', today)
     .order('heure_rdv', { ascending: true })
 
-  const total = rdvDuJour?.length ?? 0
+  const total    = rdvDuJour?.length ?? 0
   const termines = rdvDuJour?.filter(r => r.statut === 'termine').length ?? 0
-  const confirmes = rdvDuJour?.filter(r => r.statut === 'confirme').length ?? 0
-  const absents = rdvDuJour?.filter(r => r.statut === 'absent').length ?? 0
+  const confirmes= rdvDuJour?.filter(r => r.statut === 'confirme').length ?? 0
+  const absents  = rdvDuJour?.filter(r => r.statut === 'absent').length ?? 0
 
-  const statusConfig = {
-    confirme: { label: 'Confirmé', bg: 'bg-blue-50', text: 'text-blue-600', border: 'border-l-blue-400' },
-    termine: { label: 'Terminé', bg: 'bg-green-50', text: 'text-green-600', border: 'border-l-green-400' },
-    annule: { label: 'Annulé', bg: 'bg-gray-50', text: 'text-gray-500', border: 'border-l-gray-300' },
-    absent: { label: 'Absent', bg: 'bg-red-50', text: 'text-red-500', border: 'border-l-red-400' },
-  }
+  const kpis = [
+    { label: "RDV aujourd'hui", value: total,     Icon: CalendarDays,  trend: null },
+    { label: 'Terminés',        value: termines,  Icon: CheckCircle2,  trend: total > 0 ? `${Math.round((termines/total)*100)}%` : null, up: true },
+    { label: 'En attente',      value: confirmes, Icon: Clock,         trend: null },
+    { label: 'Absents',         value: absents,   Icon: UserX,         trend: absents > 0 ? `${absents}` : null, up: false },
+  ]
 
   return (
-    <main className="min-h-screen bg-[#F4F7FB]">
-
+    <main className="min-h-screen bg-slate-50">
       <Navbar
         email={user.email!}
         role={role}
@@ -47,68 +66,95 @@ export default async function DashboardPage() {
         nomPrenom={profile ? `${profile.prenom ?? ''} ${profile.nom ?? ''}`.trim() : undefined}
       />
 
-      <div className="p-8">
+      <div className="max-w-6xl mx-auto px-8 py-8">
 
-        <div className="mb-6">
-          <h2 className="text-2xl font-black text-[#0C1E35]">{clinique?.nom ?? 'Ma Clinique'}</h2>
-          <p className="text-sm text-[#64748B] mt-1">
-            {clinique?.ville} · {new Date().toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}
+        {/* Page header */}
+        <div className="mb-8">
+          <h1 className="text-xl font-semibold text-slate-900 tracking-tight">
+            {clinique?.nom ?? 'Ma Clinique'}
+          </h1>
+          <p className="text-sm text-slate-400 mt-0.5">
+            {clinique?.ville && `${clinique.ville} · `}
+            {new Date().toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}
           </p>
         </div>
 
-        <div className="grid grid-cols-4 gap-4 mb-8">
-          {[
-            { label: "RDV aujourd'hui", val: total, icon: '📅', color: 'border-[#0BA896]' },
-            { label: 'Terminés', val: termines, icon: '✅', color: 'border-[#10B981]' },
-            { label: 'À venir', val: confirmes, icon: '⏳', color: 'border-[#3B82F6]' },
-            { label: 'Absents', val: absents, icon: '⚠️', color: 'border-[#EF4444]' },
-          ].map((k) => (
-            <div key={k.label} className={`bg-white border-t-4 ${k.color} rounded-2xl p-6 shadow-sm`}>
-              <div className="flex items-center justify-between mb-3">
-                <span className="text-xs font-bold uppercase tracking-wide text-[#64748B]">{k.label}</span>
-                <span className="text-2xl">{k.icon}</span>
+        {/* KPI cards */}
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
+          {kpis.map((k) => (
+            <div key={k.label}
+              className="bg-white border border-slate-200 rounded-xl p-5 shadow-[0_1px_3px_0_rgb(0,0,0,0.04)] hover:shadow-[0_4px_12px_0_rgb(0,0,0,0.08)] transition-shadow duration-200">
+              <div className="flex items-center justify-between mb-4">
+                <span className="text-[10px] font-semibold uppercase tracking-widest text-slate-400">
+                  {k.label}
+                </span>
+                <k.Icon className="w-4 h-4 text-slate-300" />
               </div>
-              <div className="text-4xl font-black text-[#0C1E35]">{k.val}</div>
+              <div className="text-3xl font-bold font-mono tabular-nums text-slate-900">
+                {k.value}
+              </div>
+              {k.trend && (
+                <div className={`flex items-center gap-1 mt-2 ${k.up ? 'text-emerald-600' : 'text-red-500'}`}>
+                  {k.up
+                    ? <TrendingUp className="w-3 h-3" />
+                    : <TrendingDown className="w-3 h-3" />
+                  }
+                  <span className="text-xs font-medium">{k.trend}</span>
+                </div>
+              )}
             </div>
           ))}
         </div>
 
-        <div className="bg-white border border-[#E2EAF4] rounded-2xl shadow-sm overflow-hidden">
-          <div className="px-6 py-4 border-b border-[#E2EAF4] flex items-center justify-between">
+        {/* Agenda du jour */}
+        <div className="bg-white border border-slate-200 rounded-xl shadow-[0_1px_3px_0_rgb(0,0,0,0.04)] overflow-hidden">
+          <div className="px-6 py-4 border-b border-slate-100 flex items-center justify-between">
             <div>
-              <h2 className="text-lg font-black text-[#0C1E35]">📅 Agenda du jour</h2>
-              <p className="text-xs text-[#64748B] mt-0.5">{total} rendez-vous · Données en temps réel</p>
+              <h2 className="text-sm font-semibold text-slate-900">Agenda du jour</h2>
+              <p className="text-xs text-slate-400 mt-0.5">
+                {total} rendez-vous · Temps réel
+              </p>
             </div>
-            <span className="bg-[#E6F7F5] text-[#0BA896] text-xs font-bold px-3 py-1.5 rounded-full">
-              🟢 Live Supabase
+            <span className="flex items-center gap-1.5 text-xs font-medium text-emerald-600 bg-emerald-50 border border-emerald-200 px-2.5 py-1 rounded-md">
+              <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+              Live
             </span>
           </div>
 
-          <div className="divide-y divide-[#E2EAF4]">
+          <div className="divide-y divide-slate-100">
             {rdvDuJour && rdvDuJour.length > 0 ? (
               rdvDuJour.map((rdv) => {
                 const patient = rdv.patients as { nom: string; prenom: string; telephone: string } | null
                 const s = statusConfig[rdv.statut as keyof typeof statusConfig] ?? statusConfig.confirme
+                const initials = `${patient?.prenom?.[0] ?? ''}${patient?.nom?.[0] ?? ''}`.toUpperCase() || '?'
                 return (
-                  <div key={rdv.id} className={`flex items-center gap-4 px-6 py-4 hover:bg-[#F8FAFB] transition-colors border-l-4 ${s.border}`}>
-                    <div className="w-14 text-center flex-shrink-0">
-                      <div className="text-sm font-bold text-[#0C1E35]">{rdv.heure_rdv.slice(0, 5)}</div>
+                  <div key={rdv.id} className="flex items-center gap-4 px-6 py-3.5 hover:bg-slate-50 transition-colors duration-150">
+                    <span className="text-sm font-mono font-medium text-slate-900 w-10 flex-shrink-0 tabular-nums">
+                      {rdv.heure_rdv.slice(0, 5)}
+                    </span>
+                    <div className="w-8 h-8 rounded-full bg-slate-100 border border-slate-200 flex items-center justify-center text-xs font-semibold text-slate-600 flex-shrink-0">
+                      {initials}
                     </div>
-                    <div className="w-10 h-10 rounded-xl bg-[#0BA896] flex items-center justify-center text-white font-black text-lg flex-shrink-0">
-                      {patient?.nom?.[0] ?? '?'}
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-medium text-slate-900 truncate">
+                        {patient?.prenom} {patient?.nom}
+                      </p>
+                      <p className="text-xs text-slate-400 truncate mt-0.5">
+                        {rdv.motif && `${rdv.motif} · `}{rdv.medecin}{patient?.telephone && ` · ${patient.telephone}`}
+                      </p>
                     </div>
-                    <div className="flex-1">
-                      <div className="text-sm font-bold text-[#0C1E35]">{patient?.prenom} {patient?.nom}</div>
-                      <div className="text-xs text-[#64748B] mt-0.5">{rdv.motif} · {rdv.medecin} · {patient?.telephone}</div>
-                    </div>
-                    <span className={`text-xs font-bold px-3 py-1.5 rounded-full ${s.bg} ${s.text}`}>
+                    <span className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md text-xs font-medium flex-shrink-0 ${s.classes}`}>
+                      <span className={`w-1.5 h-1.5 rounded-full ${s.dot}`} />
                       {s.label}
                     </span>
                   </div>
                 )
               })
             ) : (
-              <div className="px-6 py-12 text-center text-[#64748B]">Aucun rendez-vous aujourd'hui</div>
+              <div className="px-6 py-16 text-center">
+                <CalendarDays className="w-8 h-8 text-slate-300 mx-auto mb-3" />
+                <p className="text-sm text-slate-400">Aucun rendez-vous aujourd&apos;hui</p>
+              </div>
             )}
           </div>
         </div>

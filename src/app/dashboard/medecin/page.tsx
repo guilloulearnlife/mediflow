@@ -2,6 +2,17 @@ import { createClient } from '@/lib/supabase-server'
 import { redirect } from 'next/navigation'
 import Navbar from '@/components/Navbar'
 import { getProfile } from '@/lib/profile'
+import {
+  CalendarDays, CheckCircle2, Clock, Star,
+  Activity, FileText, Users
+} from 'lucide-react'
+
+const statusConfig = {
+  confirme: { label: 'Confirmé', classes: 'bg-blue-50 text-blue-700 border border-blue-200',    dot: 'bg-blue-500' },
+  termine:  { label: 'Terminé',  classes: 'bg-emerald-50 text-emerald-700 border border-emerald-200', dot: 'bg-emerald-500' },
+  annule:   { label: 'Annulé',   classes: 'bg-slate-50 text-slate-500 border border-slate-200', dot: 'bg-slate-400' },
+  absent:   { label: 'Absent',   classes: 'bg-red-50 text-red-600 border border-red-200',       dot: 'bg-red-500' },
+}
 
 export default async function MedecinPage() {
   const supabase = await createClient()
@@ -12,7 +23,6 @@ export default async function MedecinPage() {
   const role = profile?.role ?? 'medecin'
 
   const today = new Date().toISOString().split('T')[0]
-
   const { data: rdvDuJour } = await supabase
     .from('rendez_vous')
     .select('*, patients(nom, prenom, telephone)')
@@ -20,149 +30,188 @@ export default async function MedecinPage() {
     .eq('medecin', 'Dr. Kamga')
     .order('heure_rdv', { ascending: true })
 
-  const total = rdvDuJour?.length ?? 0
+  const total    = rdvDuJour?.length ?? 0
   const termines = rdvDuJour?.filter(r => r.statut === 'termine').length ?? 0
-  const aVenir = rdvDuJour?.filter(r => r.statut === 'confirme').length ?? 0
-  const enCours = rdvDuJour?.find(r => r.statut === 'confirme')
+  const aVenir   = rdvDuJour?.filter(r => r.statut === 'confirme').length ?? 0
+  const enCours  = rdvDuJour?.find(r => r.statut === 'confirme')
 
-  const statusConfig = {
-    confirme: { label: 'Confirmé', bg: 'bg-blue-50', text: 'text-blue-600', border: 'border-l-blue-400' },
-    termine: { label: 'Terminé', bg: 'bg-green-50', text: 'text-green-600', border: 'border-l-green-400' },
-    annule: { label: 'Annulé', bg: 'bg-gray-50', text: 'text-gray-400', border: 'border-l-gray-300' },
-    absent: { label: 'Absent', bg: 'bg-red-50', text: 'text-red-500', border: 'border-l-red-400' },
-  }
+  const kpis = [
+    { label: "RDV aujourd'hui", value: total,     Icon: CalendarDays },
+    { label: 'Terminés',        value: termines,  Icon: CheckCircle2 },
+    { label: 'À venir',         value: aVenir,    Icon: Clock },
+    { label: 'Satisfaction',    value: '4.9',     Icon: Star,  unit: '/5' },
+  ]
+
+  const monthlyStats = [
+    { label: 'Patients consultés', value: '247', pct: 88, color: 'bg-teal-500' },
+    { label: 'Taux de présence',   value: '94%', pct: 94, color: 'bg-blue-500' },
+    { label: 'Nouveaux patients',  value: '38',  pct: 45, color: 'bg-violet-500' },
+  ]
 
   return (
-    <main className="min-h-screen bg-[#F8F5F0]">
-
+    <main className="min-h-screen bg-slate-50">
       <Navbar
         email={user.email!}
         role={role}
         nomPrenom={profile ? `${profile.prenom ?? ''} ${profile.nom ?? ''}`.trim() : undefined}
       />
 
-      <div className="p-8">
+      <div className="max-w-6xl mx-auto px-8 py-8">
 
+        {/* Doctor header */}
         <div className="flex items-center gap-4 mb-8">
-          <div className="w-12 h-12 rounded-xl bg-[#C8773A] flex items-center justify-center text-white font-black text-xl">K</div>
-          <div>
-            <h2 className="text-2xl font-black text-[#1A1208]">Dr. Kamga Paul</h2>
-            <p className="text-sm text-[#7A6A58]">Cardiologue · Clinique de l'Espoir · Yaoundé</p>
+          <div className="w-12 h-12 rounded-full bg-slate-900 border border-slate-700 flex items-center justify-center text-white text-sm font-bold flex-shrink-0">
+            KP
           </div>
-          <div className="ml-auto flex items-center gap-2 bg-[#4A7C59]/20 border border-[#4A7C59]/30 px-4 py-2 rounded-full">
-            <div className="w-2 h-2 rounded-full bg-[#4A7C59] animate-pulse"></div>
-            <span className="text-[#4A7C59] text-xs font-bold">En consultation</span>
+          <div className="flex-1">
+            <h1 className="text-xl font-semibold text-slate-900 tracking-tight">Dr. Kamga Paul</h1>
+            <p className="text-sm text-slate-400 mt-0.5">Cardiologue · Clinique de l&apos;Espoir · Yaoundé</p>
           </div>
+          <span className="flex items-center gap-1.5 text-xs font-medium text-emerald-600 bg-emerald-50 border border-emerald-200 px-3 py-1.5 rounded-md">
+            <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+            En consultation
+          </span>
         </div>
 
-        <div className="grid grid-cols-4 gap-4 mb-8">
-          {[
-            { label: "RDV aujourd'hui", val: total, icon: '📅' },
-            { label: 'Terminés', val: termines, icon: '✅' },
-            { label: 'À venir', val: aVenir, icon: '⏳' },
-            { label: 'Satisfaction', val: '4.9/5', icon: '⭐' },
-          ].map((k) => (
-            <div key={k.label} className="bg-white border border-[#E8DDD0] rounded-2xl p-6 shadow-sm hover:shadow-md transition-shadow">
-              <div className="flex items-center justify-between mb-3">
-                <span className="text-xs font-bold uppercase tracking-wide text-[#7A6A58]">{k.label}</span>
-                <span className="text-2xl">{k.icon}</span>
+        {/* KPI cards */}
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
+          {kpis.map((k) => (
+            <div key={k.label}
+              className="bg-white border border-slate-200 rounded-xl p-5 shadow-[0_1px_3px_0_rgb(0,0,0,0.04)] hover:shadow-[0_4px_12px_0_rgb(0,0,0,0.08)] transition-shadow duration-200">
+              <div className="flex items-center justify-between mb-4">
+                <span className="text-[10px] font-semibold uppercase tracking-widest text-slate-400">{k.label}</span>
+                <k.Icon className="w-4 h-4 text-slate-300" />
               </div>
-              <div className="text-4xl font-black text-[#1A1208]">{k.val}</div>
+              <div className="flex items-baseline gap-0.5">
+                <span className="text-3xl font-bold font-mono tabular-nums text-slate-900">{k.value}</span>
+                {'unit' in k && k.unit && <span className="text-sm text-slate-400">{k.unit}</span>}
+              </div>
             </div>
           ))}
         </div>
 
         <div className="grid grid-cols-3 gap-6">
 
-          <div className="col-span-2 bg-white border border-[#E8DDD0] rounded-2xl shadow-sm overflow-hidden">
-            <div className="px-6 py-4 border-b border-[#E8DDD0] flex items-center justify-between">
+          {/* Agenda (2/3) */}
+          <div className="col-span-2 bg-white border border-slate-200 rounded-xl shadow-[0_1px_3px_0_rgb(0,0,0,0.04)] overflow-hidden">
+            <div className="px-6 py-4 border-b border-slate-100 flex items-center justify-between">
               <div>
-                <h2 className="text-lg font-black text-[#1A1208]">📅 Mon agenda du jour</h2>
-                <p className="text-xs text-[#7A6A58] mt-0.5">{total} rendez-vous · {new Date().toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long' })}</p>
+                <h2 className="text-sm font-semibold text-slate-900">Agenda du jour</h2>
+                <p className="text-xs text-slate-400 mt-0.5">
+                  {total} rendez-vous · {new Date().toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long' })}
+                </p>
               </div>
-              <span className="bg-[#FDF3EA] text-[#C8773A] text-xs font-bold px-3 py-1.5 rounded-full">🟢 Live</span>
+              <span className="flex items-center gap-1.5 text-xs font-medium text-emerald-600 bg-emerald-50 border border-emerald-200 px-2.5 py-1 rounded-md">
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                Live
+              </span>
             </div>
 
-            <div className="divide-y divide-[#E8DDD0]">
+            <div className="divide-y divide-slate-100">
               {rdvDuJour && rdvDuJour.length > 0 ? (
                 rdvDuJour.map((rdv) => {
                   const patient = rdv.patients as { nom: string; prenom: string; telephone: string } | null
                   const s = statusConfig[rdv.statut as keyof typeof statusConfig] ?? statusConfig.confirme
+                  const initials = `${patient?.prenom?.[0] ?? ''}${patient?.nom?.[0] ?? ''}`.toUpperCase() || '?'
                   return (
-                    <div key={rdv.id} className={`flex items-center gap-4 px-6 py-4 hover:bg-[#FDF3EA] transition-colors border-l-4 ${s.border}`}>
-                      <div className="w-14 text-center flex-shrink-0">
-                        <div className="text-sm font-bold text-[#1A1208]">{rdv.heure_rdv.slice(0, 5)}</div>
-                        <div className="text-xs text-[#7A6A58]">30 min</div>
+                    <div key={rdv.id}
+                      className="flex items-center gap-4 px-6 py-3.5 hover:bg-slate-50 transition-colors duration-150">
+                      <span className="text-sm font-mono font-medium text-slate-900 w-10 flex-shrink-0 tabular-nums">
+                        {rdv.heure_rdv.slice(0, 5)}
+                      </span>
+                      <span className="text-xs text-slate-300 w-10 flex-shrink-0">30 min</span>
+                      <div className="w-8 h-8 rounded-full bg-slate-100 border border-slate-200 flex items-center justify-center text-xs font-semibold text-slate-600 flex-shrink-0">
+                        {initials}
                       </div>
-                      <div className="w-10 h-10 rounded-xl bg-[#C8773A] flex items-center justify-center text-white font-black text-lg flex-shrink-0">
-                        {patient?.nom?.[0] ?? '?'}
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-medium text-slate-900 truncate">
+                          {patient?.prenom} {patient?.nom}
+                        </p>
+                        <p className="text-xs text-slate-400 truncate mt-0.5">
+                          {rdv.motif && `${rdv.motif} · `}{patient?.telephone}
+                        </p>
                       </div>
-                      <div className="flex-1">
-                        <div className="text-sm font-bold text-[#1A1208]">{patient?.prenom} {patient?.nom}</div>
-                        <div className="text-xs text-[#7A6A58] mt-0.5">{rdv.motif} · {patient?.telephone}</div>
-                      </div>
-                      <span className={`text-xs font-bold px-3 py-1.5 rounded-full ${s.bg} ${s.text}`}>{s.label}</span>
+                      <span className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md text-xs font-medium flex-shrink-0 ${s.classes}`}>
+                        <span className={`w-1.5 h-1.5 rounded-full ${s.dot}`} />
+                        {s.label}
+                      </span>
                     </div>
                   )
                 })
               ) : (
-                <div className="px-6 py-12 text-center text-[#7A6A58]">Aucun rendez-vous aujourd'hui</div>
+                <div className="px-6 py-16 text-center">
+                  <CalendarDays className="w-8 h-8 text-slate-300 mx-auto mb-3" />
+                  <p className="text-sm text-slate-400">Aucun rendez-vous aujourd&apos;hui</p>
+                </div>
               )}
             </div>
           </div>
 
-          <div className="flex flex-col gap-6">
+          {/* Sidebar (1/3) */}
+          <div className="flex flex-col gap-5">
+
+            {/* Current patient */}
             {enCours && (
-              <div className="bg-[#1A1208] rounded-2xl p-6">
-                <div className="text-xs font-bold uppercase tracking-wide text-white/40 mb-4">Patient en cours</div>
+              <div className="bg-slate-900 rounded-xl p-5 border border-slate-800">
+                <p className="text-[10px] font-semibold uppercase tracking-widest text-slate-500 mb-4">
+                  Patient en cours
+                </p>
                 <div className="flex items-center gap-3 mb-4">
-                  <div className="w-12 h-12 rounded-xl bg-[#C8773A] flex items-center justify-center text-white font-black text-xl">
-                    {(enCours.patients as { nom: string })?.nom?.[0] ?? '?'}
+                  <div className="w-10 h-10 rounded-full bg-slate-700 border border-slate-600 flex items-center justify-center text-white text-sm font-semibold flex-shrink-0">
+                    {`${(enCours.patients as { prenom: string })?.prenom?.[0] ?? ''}${(enCours.patients as { nom: string })?.nom?.[0] ?? ''}`.toUpperCase()}
                   </div>
                   <div>
-                    <div className="text-white font-black">
+                    <p className="text-sm font-medium text-white">
                       {(enCours.patients as { prenom: string; nom: string })?.prenom}{' '}
                       {(enCours.patients as { nom: string })?.nom}
-                    </div>
-                    <div className="text-white/40 text-xs mt-0.5">{enCours.motif}</div>
+                    </p>
+                    <p className="text-xs text-slate-500 mt-0.5">{enCours.motif}</p>
                   </div>
                 </div>
-                <div className="flex items-center gap-2 bg-[#C8773A]/20 border border-[#C8773A]/30 px-4 py-2 rounded-full w-fit">
-                  <div className="w-2 h-2 rounded-full bg-[#C8773A] animate-pulse"></div>
-                  <span className="text-[#C8773A] text-xs font-bold">En cours · {enCours.heure_rdv.slice(0,5)}</span>
-                </div>
+                <span className="inline-flex items-center gap-1.5 text-xs font-medium text-teal-400 bg-teal-500/10 border border-teal-500/20 px-2.5 py-1 rounded-md">
+                  <span className="w-1.5 h-1.5 rounded-full bg-teal-400 animate-pulse" />
+                  En cours · {enCours.heure_rdv.slice(0, 5)}
+                </span>
               </div>
             )}
 
-            <div className="bg-white border border-[#E8DDD0] rounded-2xl p-6 shadow-sm">
-              <h3 className="text-sm font-black text-[#1A1208] mb-4">📊 Ce mois</h3>
-              <div className="flex flex-col gap-3">
-                {[
-                  { label: 'Patients consultés', val: '247', color: 'bg-[#C8773A]', w: '88%' },
-                  { label: 'Taux de présence', val: '94%', color: 'bg-[#4A7C59]', w: '94%' },
-                  { label: 'Nouveaux patients', val: '38', color: 'bg-[#2563EB]', w: '45%' },
-                ].map((s) => (
+            {/* Monthly stats */}
+            <div className="bg-white border border-slate-200 rounded-xl p-5 shadow-[0_1px_3px_0_rgb(0,0,0,0.04)]">
+              <div className="flex items-center gap-2 mb-5">
+                <Activity className="w-4 h-4 text-slate-400" />
+                <h3 className="text-sm font-semibold text-slate-900">Ce mois</h3>
+              </div>
+              <div className="flex flex-col gap-4">
+                {monthlyStats.map((s) => (
                   <div key={s.label}>
-                    <div className="flex justify-between mb-1">
-                      <span className="text-xs text-[#7A6A58]">{s.label}</span>
-                      <span className="text-xs font-bold text-[#1A1208]">{s.val}</span>
+                    <div className="flex justify-between mb-1.5">
+                      <span className="text-xs text-slate-500">{s.label}</span>
+                      <span className="text-xs font-mono font-semibold text-slate-900 tabular-nums">{s.value}</span>
                     </div>
-                    <div className="h-1.5 bg-[#F8F5F0] rounded-full overflow-hidden">
-                      <div className={`h-full ${s.color} rounded-full`} style={{ width: s.w }}></div>
+                    <div className="h-1.5 bg-slate-100 rounded-full overflow-hidden">
+                      <div
+                        className={`h-full ${s.color} rounded-full transition-all duration-500`}
+                        style={{ width: `${s.pct}%` }}
+                      />
                     </div>
                   </div>
                 ))}
               </div>
             </div>
 
-            <div className="bg-white border border-[#E8DDD0] rounded-2xl p-6 shadow-sm">
-              <h3 className="text-sm font-black text-[#1A1208] mb-3">📝 Notes rapides</h3>
+            {/* Quick notes */}
+            <div className="bg-white border border-slate-200 rounded-xl p-5 shadow-[0_1px_3px_0_rgb(0,0,0,0.04)]">
+              <div className="flex items-center gap-2 mb-4">
+                <FileText className="w-4 h-4 text-slate-400" />
+                <h3 className="text-sm font-semibold text-slate-900">Notes rapides</h3>
+              </div>
               <textarea
-                className="w-full h-28 bg-[#F8F5F0] border border-[#E8DDD0] rounded-xl p-3 text-sm text-[#1A1208] resize-none outline-none focus:border-[#C8773A] transition-colors"
+                className="w-full h-28 bg-slate-50 border border-slate-200 rounded-lg p-3 text-sm text-slate-900 placeholder:text-slate-400 resize-none outline-none focus:border-teal-400 focus:ring-1 focus:ring-teal-400/20 transition-all"
                 placeholder="Notes de consultation..."
               />
-              <button className="w-full mt-2 bg-[#C8773A] text-white py-2 rounded-xl text-sm font-bold hover:bg-[#A55E25] transition-colors">
-                💾 Sauvegarder
+              <button className="w-full mt-3 bg-slate-900 hover:bg-slate-800 text-white py-2 rounded-lg text-xs font-medium transition-colors duration-150 flex items-center justify-center gap-2">
+                <Users className="w-3.5 h-3.5" />
+                Sauvegarder
               </button>
             </div>
           </div>
