@@ -19,6 +19,24 @@ export async function GET(request: NextRequest) {
     const { data: all, error } = await query
     if (error) throw error
 
+    // Catégories générales → retourne toutes les cliniques actives
+    const GENERAL = ['all', 'hospital', 'hopital', 'urgences', 'clinique', '']
+
+    // Mapping valeur dropdown → mots-clés à chercher dans specialites[]
+    const KEYWORD_MAP: Record<string, string[]> = {
+      pediatrie:      ['pédiatrie', 'pediatrie', 'enfant'],
+      gynecologie:    ['gynécologie', 'gynecologie', 'maternité', 'maternite'],
+      cardiologie:    ['cardiologie', 'cardio'],
+      ophtalmologie:  ['ophtalmologie', 'ophtalmo', 'oeil', 'yeux'],
+      dermatologie:   ['dermatologie', 'dermato', 'peau'],
+      radiologie:     ['radiologie', 'imagerie', 'scanner', 'radio'],
+      kinesitherapie: ['kinésithérapie', 'kinesitherapie', 'kiné', 'kine', 'physio'],
+      laboratoire:    ['laboratoire', 'analyse', 'biologie'],
+      maternite:      ['maternité', 'maternite', 'gynécologie', 'gynecologie'],
+      dentiste:       ['dentiste', 'dentisterie', 'stomatologie'],
+      pharmacie:      ['pharmacie'],
+    }
+
     let cliniques
     if (q.trim()) {
       // Recherche texte libre : filtre sur nom ET specialites[]
@@ -32,12 +50,23 @@ export async function GET(request: NextRequest) {
       })
     } else {
       const specialiteLower = specialite.toLowerCase()
-      cliniques = specialiteLower === 'all' || specialiteLower === 'hospital'
-        ? all
-        : (all ?? []).filter(c => {
-            const specs = (c.specialites as string[] | null) ?? []
-            return specs.some(s => s.toLowerCase().includes(specialiteLower))
+      if (GENERAL.includes(specialiteLower)) {
+        // Catégorie générale → toutes les cliniques
+        cliniques = all
+      } else {
+        // Recherche par mots-clés (FR normalisé) + valeur brute
+        const keywords = KEYWORD_MAP[specialiteLower] ?? [specialiteLower]
+        cliniques = (all ?? []).filter(c => {
+          const specs = (c.specialites as string[] | null) ?? []
+          return specs.some(s => {
+            const sLower = s.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+            return keywords.some(kw => {
+              const kwNorm = kw.normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+              return sLower.includes(kwNorm)
+            })
           })
+        })
+      }
     }
 
     return NextResponse.json({
