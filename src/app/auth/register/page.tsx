@@ -82,7 +82,14 @@ export default function RegisterPage() {
           prenom:      form.prenom,
           telephone:   form.telephone,
         })
-      if (profileErr) throw profileErr
+      // 23505 = unique_violation : compte déjà créé → rediriger vers connexion
+      if (profileErr) {
+        if (profileErr.code === '23505') {
+          router.push('/auth/login')
+          return
+        }
+        throw profileErr
+      }
 
       router.push('/dashboard')
     } catch (err) {
