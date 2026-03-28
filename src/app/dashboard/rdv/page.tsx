@@ -55,9 +55,10 @@ export default async function RdvPage() {
         {/* Table */}
         <div className="bg-white border border-slate-200 rounded-xl shadow-[0_1px_3px_0_rgb(0,0,0,0.04)] overflow-hidden">
           {/* Table header */}
-          <div className="grid grid-cols-[auto_1fr_auto_auto_auto] gap-4 px-6 py-3 border-b border-slate-100 bg-slate-50/80">
+          <div className="grid grid-cols-[auto_1fr_auto_auto_auto_auto] gap-4 px-6 py-3 border-b border-slate-100 bg-slate-50/80">
             <span className="text-[10px] font-semibold uppercase tracking-widest text-slate-400 w-8">—</span>
             <span className="text-[10px] font-semibold uppercase tracking-widest text-slate-400">Patient</span>
+            <span className="text-[10px] font-semibold uppercase tracking-widest text-slate-400 w-28">Spécialité</span>
             <span className="text-[10px] font-semibold uppercase tracking-widest text-slate-400 w-24 text-right">Date</span>
             <span className="text-[10px] font-semibold uppercase tracking-widest text-slate-400 w-12 text-right">Heure</span>
             <span className="text-[10px] font-semibold uppercase tracking-widest text-slate-400 w-24 text-right">Statut</span>
@@ -69,9 +70,10 @@ export default async function RdvPage() {
                 const patient = rdv.patients as { nom: string; prenom: string; telephone: string } | null
                 const s = statusConfig[rdv.statut as keyof typeof statusConfig] ?? statusConfig.confirme
                 const initials = `${patient?.prenom?.[0] ?? ''}${patient?.nom?.[0] ?? ''}`.toUpperCase() || '?'
+                const specialite = (rdv as Record<string, unknown>).specialite as string | null
                 return (
                   <div key={rdv.id}
-                    className="grid grid-cols-[auto_1fr_auto_auto_auto] gap-4 items-center px-6 py-3.5 hover:bg-slate-50 transition-colors duration-150">
+                    className="grid grid-cols-[auto_1fr_auto_auto_auto_auto] gap-4 items-center px-6 py-3.5 hover:bg-slate-50 transition-colors duration-150">
                     <div className="w-8 h-8 rounded-full bg-slate-100 border border-slate-200 flex items-center justify-center text-xs font-semibold text-slate-600 flex-shrink-0">
                       {initials}
                     </div>
@@ -80,8 +82,17 @@ export default async function RdvPage() {
                         {patient?.prenom} {patient?.nom}
                       </p>
                       <p className="text-xs text-slate-400 truncate mt-0.5">
-                        {rdv.motif && `${rdv.motif} · `}{rdv.medecin}{patient?.telephone && ` · ${patient.telephone}`}
+                        {rdv.motif || patient?.telephone}
                       </p>
+                    </div>
+                    <div className="w-28">
+                      {specialite ? (
+                        <span className="inline-block px-2 py-0.5 rounded-md bg-teal-50 border border-teal-200 text-teal-700 text-xs font-medium truncate max-w-full">
+                          {specialite}
+                        </span>
+                      ) : (
+                        <span className="text-xs text-slate-300">—</span>
+                      )}
                     </div>
                     <span className="text-sm font-mono text-slate-500 w-24 text-right tabular-nums">
                       {new Date(rdv.date_rdv).toLocaleDateString('fr-FR')}

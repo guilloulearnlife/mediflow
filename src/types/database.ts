@@ -24,7 +24,8 @@ export type Clinique = {
     patient_id: string
     date_rdv: string
     heure_rdv: string
-    motif: string | null
+    specialite: string | null   // spécialité médicale (dialyse, cardiologie…)
+    motif: string | null        // raison personnelle du patient
     medecin: string | null
     statut: 'confirme' | 'annule' | 'termine' | 'absent'
     rappel_j3_envoye: boolean

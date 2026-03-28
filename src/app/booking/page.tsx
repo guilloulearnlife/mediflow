@@ -96,10 +96,11 @@ function BookingContent() {
         .insert({
           clinique_id: resolvedCliniqueId,
           patient_id,
-          date_rdv:  form.date_rdv,
-          heure_rdv: form.heure_rdv,
-          motif:     form.motif || form.specialite,
-          statut:    'confirme',
+          date_rdv:   form.date_rdv,
+          heure_rdv:  form.heure_rdv,
+          specialite: form.specialite,   // colonne dédiée — permet le filtrage par spécialité
+          motif:      form.motif || null, // raison personnelle du patient (optionnelle)
+          statut:     'confirme',
         })
       if (rdvErr) throw rdvErr
       setSuccess(true)
