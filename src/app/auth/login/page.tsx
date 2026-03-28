@@ -4,6 +4,7 @@ import { useState } from 'react'
 import { createClient } from '@/lib/supabase'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
+import { redirectByRole, type Role } from '@/lib/profile'
 
 export default function LoginPage() {
   const [email, setEmail] = useState('')
@@ -29,7 +30,13 @@ export default function LoginPage() {
       return
     }
 
-    router.push('/dashboard')
+    // Récupérer le rôle pour rediriger vers le bon dashboard
+    const { data: profile } = await supabase
+      .from('profiles')
+      .select('role')
+      .single()
+
+    router.push(redirectByRole((profile?.role as Role) ?? 'secretaire'))
   }
 
   return (
@@ -95,9 +102,9 @@ export default function LoginPage() {
 
           <p className="text-center text-sm text-[#64748B] mt-6">
             Pas encore de compte ?{' '}
-            <a href="mailto:contact@mediflow.cm" className="text-[#0BA896] font-600">
-              Contactez-nous
-            </a>
+            <Link href="/auth/register" className="text-[#0BA896] font-semibold hover:underline">
+              Inscrire mon établissement
+            </Link>
           </p>
         </div>
 
