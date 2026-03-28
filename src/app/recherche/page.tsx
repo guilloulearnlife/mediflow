@@ -393,22 +393,3 @@ function mergeResults(existing: Clinique[], incoming: Clinique[], refLat: number
   })
 }
 
-function normStr(s: string) {
-  return s.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/[^a-z0-9]/g,'')
-}
-
-function dice(a: string, b: string): number {
-  if (a === b) return 1
-  if (a.length < 2 || b.length < 2) return 0
-  const s1 = new Set(Array.from({length:a.length-1},(_,i)=>a.slice(i,i+2)))
-  const s2 = new Set(Array.from({length:b.length-1},(_,i)=>b.slice(i,i+2)))
-  const inter = [...s1].filter(x=>s2.has(x)).length
-  return (2*inter)/(s1.size+s2.size)
-}
-
-function calcDist(lat1: number, lon1: number, lat2: number, lon2: number): number {
-  const R = 6371e3, toRad = (d: number) => d * Math.PI / 180
-  const dLat = toRad(lat2-lat1), dLon = toRad(lon2-lon1)
-  const a = Math.sin(dLat/2)**2 + Math.cos(toRad(lat1))*Math.cos(toRad(lat2))*Math.sin(dLon/2)**2
-  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a))
-}
