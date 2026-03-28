@@ -95,7 +95,7 @@ function buildOverpassQuery(lat: number, lon: number, rayon: number, osmTags: st
     const [k, v] = tag.split('=')
     return `nwr["${k}"="${v}"](around:${rayon},${lat},${lon});`
   }).join('\n')
-  return `[out:json][timeout:25];\n(\n${blocks}\n);\nout center tags;`
+  return `[out:json][timeout:25];\n(\n${blocks}\n);\nout body center;`
 }
 
 function calcDist(lat1: number, lon1: number, lat2: number, lon2: number): number {
@@ -153,12 +153,13 @@ async function fetchOverpass(lat: number, lon: number, rayon: number, osmTags: s
   }
 
   const results = await tryTags(osmTags)
-  // Fallback si 0 résultats avec les tags spécifiques
+  // Fallback si 0 résultats : essaie avec les tags healthcare génériques
   if (results.length === 0) {
-    const fallback = osmTags.some(t => t.startsWith('amenity='))
-      ? [] // déjà des tags amenity → pas de fallback
-      : await tryTags(['amenity=hospital', 'amenity=clinic'])
-    return fallback
+    const fallbackTags = ['amenity=hospital', 'amenity=clinic', 'amenity=doctors', 'healthcare=*']
+    const isSameFallback = osmTags.length === fallbackTags.length && osmTags.every(t => fallbackTags.includes(t))
+    if (!isSameFallback) {
+      return await tryTags(['amenity=hospital', 'amenity=clinic', 'amenity=doctors'])
+    }
   }
   return results
 }
