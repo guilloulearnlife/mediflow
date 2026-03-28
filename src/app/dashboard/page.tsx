@@ -35,15 +35,19 @@ export default async function DashboardPage() {
   const profile = await getProfile()
   const role = profile?.role ?? 'secretaire'
 
-  const { data: cliniques } = await supabase.from('cliniques').select('*').limit(1)
-  const clinique = cliniques?.[0]
+  const cliniqueId = profile?.clinique_id
+  const { data: clinique } = cliniqueId
+    ? await supabase.from('cliniques').select('*').eq('id', cliniqueId).single()
+    : { data: null }
 
   const today = new Date().toISOString().split('T')[0]
-  const { data: rdvDuJour } = await supabase
+  let rdvQuery = supabase
     .from('rendez_vous')
     .select('*, patients(nom, prenom, telephone)')
     .eq('date_rdv', today)
     .order('heure_rdv', { ascending: true })
+  if (cliniqueId) rdvQuery = rdvQuery.eq('clinique_id', cliniqueId)
+  const { data: rdvDuJour } = await rdvQuery
 
   const total    = rdvDuJour?.length ?? 0
   const termines = rdvDuJour?.filter(r => r.statut === 'termine').length ?? 0
