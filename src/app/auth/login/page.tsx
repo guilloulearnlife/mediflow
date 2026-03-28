@@ -4,7 +4,14 @@ import { useState } from 'react'
 import { createClient } from '@/lib/supabase'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
-import { redirectByRole, type Role } from '@/lib/profile'
+
+const ROLE_REDIRECT: Record<string, string> = {
+  super_admin: '/dashboard/admin',
+  medecin:     '/dashboard/medecin',
+  directeur:   '/dashboard',
+  gerant:      '/dashboard',
+  secretaire:  '/dashboard',
+}
 
 export default function LoginPage() {
   const [email, setEmail] = useState('')
@@ -36,7 +43,7 @@ export default function LoginPage() {
       .select('role')
       .single()
 
-    router.push(redirectByRole((profile?.role as Role) ?? 'secretaire'))
+    router.push(ROLE_REDIRECT[profile?.role ?? ''] ?? '/dashboard')
   }
 
   return (
