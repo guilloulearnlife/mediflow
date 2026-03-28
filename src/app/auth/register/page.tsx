@@ -56,6 +56,12 @@ export default function RegisterPage() {
       const userId = authData.user?.id
       if (!userId) throw new Error('Erreur lors de la création du compte')
 
+      // Email déjà utilisé → Supabase renvoie un ghost user (identities: [])
+      if ((authData.user?.identities?.length ?? 1) === 0) {
+        router.push('/auth/login')
+        return
+      }
+
       // 2. Créer la clinique
       const cliniqueId = crypto.randomUUID()
       const { error: cliniqueErr } = await supabase
