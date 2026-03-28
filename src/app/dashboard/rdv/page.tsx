@@ -46,13 +46,15 @@ export default async function RdvPage() {
             <h1 className="text-xl font-semibold text-slate-900 tracking-tight">Rendez-vous</h1>
             <p className="text-sm text-slate-400 mt-0.5">{rdvs?.length ?? 0} rendez-vous</p>
           </div>
-          <Link
-            href="/dashboard/rdv/nouveau"
-            className="inline-flex items-center gap-2 bg-teal-600 hover:bg-teal-700 text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors duration-150"
-          >
-            <CalendarPlus className="w-4 h-4" />
-            Nouveau RDV
-          </Link>
+          {role !== 'medecin' && (
+            <Link
+              href="/dashboard/rdv/nouveau"
+              className="inline-flex items-center gap-2 bg-teal-600 hover:bg-teal-700 text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors duration-150"
+            >
+              <CalendarPlus className="w-4 h-4" />
+              Nouveau RDV
+            </Link>
+          )}
         </div>
 
         {/* Table */}

@@ -1,15 +1,25 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { createClient } from '@/lib/supabase'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
-import { ArrowLeft, CalendarPlus, Check, Loader2 } from 'lucide-react'
+import { ArrowLeft, CalendarPlus, Check, Loader2, UserCheck, UserPlus } from 'lucide-react'
 
 const HEURES = [
   '08:00','08:30','09:00','09:30','10:00','10:30','11:00','11:30',
   '14:00','14:30','15:00','15:30','16:00','16:30','17:00',
 ]
+
+interface PatientFound {
+  id: string
+  nom: string
+  prenom: string | null
+  telephone: string
+  date_naissance: string | null
+  totalRdv: number
+  dernierRdv: string | null
+}
 
 interface Props {
   cliniqueId: string
@@ -24,23 +34,67 @@ export default function NouveauRdvForm({ cliniqueId, medecins, defaultNom, defau
   const supabase = createClient()
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
+  const [patientFound, setPatientFound] = useState<PatientFound | null>(null)
+  const [lookupDone, setLookupDone] = useState(false)
+  const lookupTimeout = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   const defaultMedecin = medecins[0]
     ? `Dr. ${medecins[0].prenom ?? ''} ${medecins[0].nom ?? ''}`.trim()
     : ''
 
   const [form, setForm] = useState({
-    nom:      defaultNom       ?? '',
-    prenom:   defaultPrenom    ?? '',
+    nom:       defaultNom       ?? '',
+    prenom:    defaultPrenom    ?? '',
     telephone: defaultTelephone ?? '',
     date_rdv:  new Date().toISOString().split('T')[0],
     heure_rdv: '08:00',
-    motif:    '',
-    medecin:  defaultMedecin,
+    motif:     '',
+    medecin:   defaultMedecin,
   })
 
+  // Lookup patient si téléphone pré-rempli
+  useEffect(() => {
+    if (defaultTelephone) lookupPatient(defaultTelephone)
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  async function lookupPatient(tel: string) {
+    if (tel.length < 8) { setPatientFound(null); setLookupDone(false); return }
+    const { data } = await supabase
+      .from('patients')
+      .select('id, nom, prenom, telephone, date_naissance, rendez_vous(id, date_rdv, statut)')
+      .eq('clinique_id', cliniqueId)
+      .eq('telephone', tel)
+      .limit(1)
+      .single()
+    if (data) {
+      const rdvs = (data.rendez_vous ?? []) as { id: string; date_rdv: string; statut: string }[]
+      const sorted = [...rdvs].sort((a, b) => b.date_rdv.localeCompare(a.date_rdv))
+      setPatientFound({
+        id: data.id,
+        nom: data.nom,
+        prenom: data.prenom,
+        telephone: data.telephone,
+        date_naissance: data.date_naissance,
+        totalRdv: rdvs.length,
+        dernierRdv: sorted[0]?.date_rdv ?? null,
+      })
+      setForm(f => ({ ...f, nom: data.nom, prenom: data.prenom ?? '' }))
+    } else {
+      setPatientFound(null)
+    }
+    setLookupDone(true)
+  }
+
   function handleChange(e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) {
-    setForm({ ...form, [e.target.name]: e.target.value })
+    const { name, value } = e.target
+    setForm(f => ({ ...f, [name]: value }))
+    if (name === 'telephone') {
+      setLookupDone(false)
+      setPatientFound(null)
+      if (lookupTimeout.current) clearTimeout(lookupTimeout.current)
+      lookupTimeout.current = setTimeout(() => lookupPatient(value), 600)
+    }
   }
 
   async function handleSubmit(e: React.FormEvent) {
@@ -50,15 +104,9 @@ export default function NouveauRdvForm({ cliniqueId, medecins, defaultNom, defau
 
     try {
       let patient_id: string
-      const { data: existing } = await supabase
-        .from('patients')
-        .select('id')
-        .eq('telephone', form.telephone)
-        .eq('clinique_id', cliniqueId)
-        .limit(1)
 
-      if (existing && existing.length > 0) {
-        patient_id = existing[0].id
+      if (patientFound) {
+        patient_id = patientFound.id
       } else {
         const newId = crypto.randomUUID()
         const { error: patientError } = await supabase
@@ -101,10 +149,7 @@ export default function NouveauRdvForm({ cliniqueId, medecins, defaultNom, defau
           </div>
           <span className="text-sm font-semibold text-slate-900">Nouveau rendez-vous</span>
         </div>
-        <Link
-          href="/dashboard/rdv"
-          className="inline-flex items-center gap-1.5 text-xs font-medium text-slate-500 hover:text-slate-900 transition-colors"
-        >
+        <Link href="/dashboard/rdv" className="inline-flex items-center gap-1.5 text-xs font-medium text-slate-500 hover:text-slate-900 transition-colors">
           <ArrowLeft className="w-3.5 h-3.5" />
           Retour
         </Link>
@@ -112,9 +157,7 @@ export default function NouveauRdvForm({ cliniqueId, medecins, defaultNom, defau
 
       <div className="max-w-xl mx-auto px-8 py-8">
         {error && (
-          <div className="bg-red-50 border border-red-200 text-red-600 text-sm px-4 py-3 rounded-lg mb-6">
-            {error}
-          </div>
+          <div className="bg-red-50 border border-red-200 text-red-600 text-sm px-4 py-3 rounded-lg mb-6">{error}</div>
         )}
 
         <form onSubmit={handleSubmit} className="flex flex-col gap-6">
@@ -125,19 +168,58 @@ export default function NouveauRdvForm({ cliniqueId, medecins, defaultNom, defau
               Informations patient
             </h2>
             <div className="flex flex-col gap-4">
+
+              {/* Téléphone en premier pour le lookup */}
+              <div>
+                <label className="block text-xs font-medium text-slate-600 mb-1.5">Téléphone *</label>
+                <input
+                  name="telephone" value={form.telephone} onChange={handleChange} required
+                  placeholder="677 123 456"
+                  className={inputClass}
+                />
+                {/* Résultat du lookup */}
+                {lookupDone && patientFound && (
+                  <div className="mt-2 flex items-start gap-2.5 bg-emerald-50 border border-emerald-200 rounded-lg px-3 py-2.5">
+                    <UserCheck className="w-4 h-4 text-emerald-600 mt-0.5 flex-shrink-0" />
+                    <div>
+                      <p className="text-xs font-semibold text-emerald-800">
+                        Patient existant — {patientFound.prenom} {patientFound.nom}
+                      </p>
+                      <p className="text-xs text-emerald-600 mt-0.5">
+                        {patientFound.totalRdv} RDV passé{patientFound.totalRdv > 1 ? 's' : ''}
+                        {patientFound.dernierRdv && ` · Dernier : ${new Date(patientFound.dernierRdv).toLocaleDateString('fr-FR')}`}
+                        {patientFound.date_naissance && ` · Né(e) le ${new Date(patientFound.date_naissance).toLocaleDateString('fr-FR')}`}
+                      </p>
+                    </div>
+                  </div>
+                )}
+                {lookupDone && !patientFound && form.telephone.length >= 8 && (
+                  <div className="mt-2 flex items-center gap-2 text-xs text-slate-400">
+                    <UserPlus className="w-3.5 h-3.5" />
+                    Nouveau patient — sera créé automatiquement
+                  </div>
+                )}
+              </div>
+
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <label className="block text-xs font-medium text-slate-600 mb-1.5">Nom *</label>
-                  <input name="nom" value={form.nom} onChange={handleChange} required placeholder="Nkomo" className={inputClass} />
+                  <input
+                    name="nom" value={form.nom} onChange={handleChange} required
+                    placeholder="Nkomo"
+                    readOnly={!!patientFound}
+                    className={`${inputClass} ${patientFound ? 'bg-slate-50 text-slate-500' : ''}`}
+                  />
                 </div>
                 <div>
                   <label className="block text-xs font-medium text-slate-600 mb-1.5">Prénom *</label>
-                  <input name="prenom" value={form.prenom} onChange={handleChange} required placeholder="Jean-Baptiste" className={inputClass} />
+                  <input
+                    name="prenom" value={form.prenom} onChange={handleChange} required
+                    placeholder="Jean-Baptiste"
+                    readOnly={!!patientFound}
+                    className={`${inputClass} ${patientFound ? 'bg-slate-50 text-slate-500' : ''}`}
+                  />
                 </div>
-              </div>
-              <div>
-                <label className="block text-xs font-medium text-slate-600 mb-1.5">Téléphone *</label>
-                <input name="telephone" value={form.telephone} onChange={handleChange} required placeholder="677 123 456" className={inputClass} />
               </div>
             </div>
           </div>
@@ -186,8 +268,7 @@ export default function NouveauRdvForm({ cliniqueId, medecins, defaultNom, defau
           </div>
 
           <button
-            type="submit"
-            disabled={loading}
+            type="submit" disabled={loading}
             className="w-full flex items-center justify-center gap-2 bg-teal-600 hover:bg-teal-700 disabled:opacity-50 text-white py-3 rounded-lg text-sm font-medium transition-colors duration-150"
           >
             {loading ? <><Loader2 className="w-4 h-4 animate-spin" />Création...</> : <><Check className="w-4 h-4" />Créer le rendez-vous</>}

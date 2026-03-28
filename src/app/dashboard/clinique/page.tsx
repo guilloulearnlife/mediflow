@@ -48,7 +48,7 @@ export default async function CliniqueePage() {
       ? supabase.from('patients').select('id, created_at').eq('clinique_id', cliniqueId)
       : Promise.resolve({ data: [] }),
     cliniqueId
-      ? supabase.from('profiles').select('id, nom, prenom, role').eq('clinique_id', cliniqueId).eq('role', 'medecin')
+      ? supabase.from('profiles').select('id, nom, prenom, role').eq('clinique_id', cliniqueId).eq('role', 'medecin').order('nom', { ascending: true })
       : Promise.resolve({ data: [] }),
   ])
 
@@ -56,6 +56,15 @@ export default async function CliniqueePage() {
   const termines  = rdvDuJour?.filter(r => r.statut === 'termine').length ?? 0
   const confirmes = rdvDuJour?.filter(r => r.statut === 'confirme').length ?? 0
   const absents   = rdvDuJour?.filter(r => r.statut === 'absent').length ?? 0
+
+  // Calculer statut occupé/disponible par médecin (a un RDV confirmé aujourd'hui)
+  const rdvConfirmesAujourdhui = rdvDuJour?.filter(r => r.statut === 'confirme') ?? []
+  function medecinEstOccupe(m: { nom: string | null; prenom: string | null }) {
+    if (!m.nom) return false
+    return rdvConfirmesAujourdhui.some(r =>
+      typeof r.medecin === 'string' && r.medecin.toLowerCase().includes(m.nom!.toLowerCase())
+    )
+  }
 
   const totalPatients = patients?.length ?? 0
   const nouveaux = patients?.filter(p =>
@@ -268,15 +277,24 @@ export default async function CliniqueePage() {
               <div className="flex flex-col gap-2 mb-3">
                 {medecins && medecins.map((m) => {
                   const initials = `${m.prenom?.[0] ?? ''}${m.nom?.[0] ?? ''}`.toUpperCase() || '?'
+                  const occupe = medecinEstOccupe(m)
                   return (
-                    <div key={m.id} className="flex items-center gap-3">
+                    <Link
+                      key={m.id}
+                      href={`/dashboard/clinique/medecin/${m.id}`}
+                      className="flex items-center gap-3 p-2 rounded-lg hover:bg-slate-50 transition-colors duration-150 -mx-2"
+                    >
                       <div className="w-7 h-7 rounded-full bg-slate-100 border border-slate-200 flex items-center justify-center text-[10px] font-semibold text-slate-600 flex-shrink-0">
                         {initials}
                       </div>
-                      <span className="text-sm text-slate-700 truncate">
+                      <span className="text-sm text-slate-700 truncate flex-1">
                         Dr. {m.prenom} {m.nom}
                       </span>
-                    </div>
+                      <span className={`flex items-center gap-1 text-[10px] font-semibold px-1.5 py-0.5 rounded ${occupe ? 'bg-amber-50 text-amber-600' : 'bg-emerald-50 text-emerald-600'}`}>
+                        <span className={`w-1 h-1 rounded-full ${occupe ? 'bg-amber-500 animate-pulse' : 'bg-emerald-500'}`} />
+                        {occupe ? 'Occupé' : 'Libre'}
+                      </span>
+                    </Link>
                   )
                 })}
               </div>

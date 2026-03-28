@@ -3,7 +3,8 @@ import { redirect } from 'next/navigation'
 import Navbar from '@/components/Navbar'
 import { getProfile } from '@/lib/profile'
 import RdvStatusSelect from '@/components/RdvStatusSelect'
-import { CalendarDays, CheckCircle2, Clock, FileText } from 'lucide-react'
+import NotesRdv from '@/components/NotesRdv'
+import { CalendarDays, CheckCircle2, Clock } from 'lucide-react'
 import type { Statut } from '@/app/actions/rdv'
 
 const statusConfig = {
@@ -36,7 +37,7 @@ export default async function MedecinPage() {
 
   let rdvTodayQuery = supabase
     .from('rendez_vous')
-    .select('*, patients(nom, prenom, telephone)')
+    .select('*, notes, patients(nom, prenom, telephone)')
     .eq('date_rdv', today)
     .order('heure_rdv', { ascending: true })
 
@@ -245,17 +246,18 @@ export default async function MedecinPage() {
               </div>
             )}
 
-            {/* Quick notes */}
-            <div className="bg-white border border-slate-200 rounded-xl p-5 shadow-[0_1px_3px_0_rgb(0,0,0,0.04)]">
-              <div className="flex items-center gap-2 mb-4">
-                <FileText className="w-4 h-4 text-slate-400" />
-                <h3 className="text-sm font-semibold text-slate-900">Notes rapides</h3>
-              </div>
-              <textarea
-                className="w-full h-28 bg-slate-50 border border-slate-200 rounded-lg p-3 text-sm text-slate-900 placeholder:text-slate-400 resize-none outline-none focus:border-teal-400 focus:ring-1 focus:ring-teal-400/20 transition-all"
-                placeholder="Notes de consultation..."
+            {/* Notes de consultation (liées au patient en cours) */}
+            {enCours ? (
+              <NotesRdv
+                rdvId={enCours.id}
+                initialNotes={(enCours as Record<string, unknown>).notes as string | null}
+                patientNom={`${(enCours.patients as { prenom: string; nom: string })?.prenom ?? ''} ${(enCours.patients as { nom: string })?.nom ?? ''}`.trim()}
               />
-            </div>
+            ) : (
+              <div className="bg-white border border-slate-200 rounded-xl p-5 shadow-[0_1px_3px_0_rgb(0,0,0,0.04)]">
+                <p className="text-xs text-slate-400 text-center py-4">Aucune consultation en cours</p>
+              </div>
+            )}
           </div>
         </div>
       </div>

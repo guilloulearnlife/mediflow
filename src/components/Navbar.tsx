@@ -60,9 +60,8 @@ const navItems: Record<Role, NavItem[]> = {
     { href: '/dashboard/patients',    label: 'Patients',     Icon: Users },
   ],
   medecin: [
-    { href: '/dashboard/medecin',  label: 'Mon espace',    Icon: Stethoscope },
-    { href: '/dashboard/rdv',      label: 'Rendez-vous',   Icon: Calendar },
-    { href: '/dashboard/patients', label: 'Patients',      Icon: Users },
+    { href: '/dashboard/medecin',  label: 'Mon espace',  Icon: Stethoscope },
+    { href: '/dashboard/patients', label: 'Patients',    Icon: Users },
   ],
 }
 
