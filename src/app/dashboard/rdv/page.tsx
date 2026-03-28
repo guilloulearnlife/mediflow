@@ -19,13 +19,16 @@ export default async function RdvPage() {
 
   const profile = await getProfile()
   const role = profile?.role ?? 'secretaire'
+  const cliniqueId = profile?.clinique_id
 
-  const { data: rdvs } = await supabase
+  let rdvQuery = supabase
     .from('rendez_vous')
     .select('*, patients(nom, prenom, telephone)')
     .order('date_rdv', { ascending: false })
     .order('heure_rdv', { ascending: true })
     .limit(50)
+  if (cliniqueId) rdvQuery = rdvQuery.eq('clinique_id', cliniqueId)
+  const { data: rdvs } = await rdvQuery
 
   return (
     <main className="min-h-screen bg-slate-50">

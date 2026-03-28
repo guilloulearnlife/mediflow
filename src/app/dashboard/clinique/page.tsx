@@ -23,10 +23,11 @@ export default async function CliniqueePage() {
 
   const profile = await getProfile()
   const role = profile?.role ?? 'gerant'
+  const cliniqueId = profile?.clinique_id
 
-  // Fetch clinic data
-  const { data: cliniques } = await supabase.from('cliniques').select('*').limit(1)
-  const clinique = cliniques?.[0]
+  const { data: clinique } = cliniqueId
+    ? await supabase.from('cliniques').select('*').eq('id', cliniqueId).single()
+    : { data: null }
 
   const today = new Date().toISOString().split('T')[0]
 
@@ -36,21 +37,18 @@ export default async function CliniqueePage() {
     { data: patients },
     { data: medecins },
   ] = await Promise.all([
-    supabase
-      .from('rendez_vous')
-      .select('*, patients(nom, prenom, telephone)')
-      .eq('date_rdv', today)
-      .order('heure_rdv', { ascending: true }),
-    supabase
-      .from('rendez_vous')
-      .select('id, statut'),
-    supabase
-      .from('patients')
-      .select('id, created_at'),
-    supabase
-      .from('profiles')
-      .select('id, nom, prenom, role')
-      .eq('role', 'medecin'),
+    cliniqueId
+      ? supabase.from('rendez_vous').select('*, patients(nom, prenom, telephone)').eq('clinique_id', cliniqueId).eq('date_rdv', today).order('heure_rdv', { ascending: true })
+      : Promise.resolve({ data: [] }),
+    cliniqueId
+      ? supabase.from('rendez_vous').select('id, statut').eq('clinique_id', cliniqueId)
+      : Promise.resolve({ data: [] }),
+    cliniqueId
+      ? supabase.from('patients').select('id, created_at').eq('clinique_id', cliniqueId)
+      : Promise.resolve({ data: [] }),
+    cliniqueId
+      ? supabase.from('profiles').select('id, nom, prenom, role').eq('clinique_id', cliniqueId).eq('role', 'medecin')
+      : Promise.resolve({ data: [] }),
   ])
 
   const total     = rdvDuJour?.length ?? 0

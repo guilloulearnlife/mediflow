@@ -12,11 +12,14 @@ export default async function PatientsPage() {
 
   const profile = await getProfile()
   const role = profile?.role ?? 'secretaire'
+  const cliniqueId = profile?.clinique_id
 
-  const { data: patients } = await supabase
+  let patQuery = supabase
     .from('patients')
     .select('*, rendez_vous(id, date_rdv, statut)')
     .order('created_at', { ascending: false })
+  if (cliniqueId) patQuery = patQuery.eq('clinique_id', cliniqueId)
+  const { data: patients } = await patQuery
 
   const totalPatients  = patients?.length ?? 0
   const nouveaux = patients?.filter(p =>
