@@ -57,9 +57,11 @@ export default function RegisterPage() {
       if (!userId) throw new Error('Erreur lors de la création du compte')
 
       // 2. Créer la clinique
-      const { data: cliniqueData, error: cliniqueErr } = await supabase
+      const cliniqueId = crypto.randomUUID()
+      const { error: cliniqueErr } = await supabase
         .from('cliniques')
         .insert({
+          id:       cliniqueId,
           nom:      form.nomClinique,
           adresse:  form.adresse,
           ville:    form.ville,
@@ -67,8 +69,6 @@ export default function RegisterPage() {
           actif:    true,
           specialites: [form.type].filter(Boolean),
         })
-        .select('id')
-        .single()
       if (cliniqueErr) throw cliniqueErr
 
       // 3. Créer le profil directeur
@@ -76,7 +76,7 @@ export default function RegisterPage() {
         .from('profiles')
         .insert({
           id:          userId,
-          clinique_id: cliniqueData.id,
+          clinique_id: cliniqueId,
           role:        'directeur',
           nom:         form.nom,
           prenom:      form.prenom,
