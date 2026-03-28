@@ -98,6 +98,19 @@ function buildOverpassQuery(lat: number, lon: number, rayon: number, osmTags: st
   return `[out:json][timeout:25];\n(\n${blocks}\n);\nout body center;`
 }
 
+function buildOverpassQueryLibre(lat: number, lon: number, rayon: number, terme: string): string {
+  // Escape special regex chars sauf les lettres/chiffres
+  const safe = terme.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+  return `[out:json][timeout:30];
+(
+  nwr["name"~"${safe}",i]["amenity"~"hospital|clinic|doctors|pharmacy|laboratory"](around:${rayon},${lat},${lon});
+  nwr["name"~"${safe}",i]["healthcare"](around:${rayon},${lat},${lon});
+  nwr["healthcare:speciality"~"${safe}",i](around:${rayon},${lat},${lon});
+  nwr["description"~"${safe}",i]["amenity"~"hospital|clinic"](around:${rayon},${lat},${lon});
+);
+out body center;`
+}
+
 function calcDist(lat1: number, lon1: number, lat2: number, lon2: number): number {
   const R = 6371e3, toRad = (d: number) => d * Math.PI / 180
   const dLat = toRad(lat2 - lat1), dLon = toRad(lon2 - lon1)
@@ -118,10 +131,9 @@ function dice(a: string, b: string): number {
   return (2*inter)/(s1.size+s2.size)
 }
 
-async function fetchOverpass(lat: number, lon: number, rayon: number, osmTags: string[]): Promise<Clinique[]> {
-  // Si les tags primaires retournent 0, on essaie amenity=hospital+clinic en fallback
-  const tryTags = async (tags: string[]): Promise<Clinique[]> => {
-    const body = `data=${encodeURIComponent(buildOverpassQuery(lat, lon, rayon, tags))}`
+async function fetchOverpass(lat: number, lon: number, rayon: number, osmTags: string[], texteLibre?: string): Promise<Clinique[]> {
+  const tryQuery = async (query: string): Promise<Clinique[]> => {
+    const body = `data=${encodeURIComponent(query)}`
     const res = await fetch('https://overpass-api.de/api/interpreter', {
       method: 'POST',
       headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
@@ -152,14 +164,21 @@ async function fetchOverpass(lat: number, lon: number, rayon: number, osmTags: s
       .filter((c: Clinique) => c.latitude !== 0 && c.longitude !== 0)
   }
 
-  const results = await tryTags(osmTags)
+  // Mode texte libre : requête Overpass par regex sur nom + healthcare:speciality
+  if (texteLibre && texteLibre.trim().length >= 2) {
+    const results = await tryQuery(buildOverpassQueryLibre(lat, lon, rayon, texteLibre.trim()))
+    // Fallback large si rien trouvé avec le terme exact
+    if (results.length === 0) {
+      return await tryQuery(buildOverpassQuery(lat, lon, rayon, ['amenity=hospital', 'amenity=clinic', 'amenity=doctors']))
+    }
+    return results
+  }
+
+  // Mode tags standards
+  const results = await tryQuery(buildOverpassQuery(lat, lon, rayon, osmTags))
   // Fallback si 0 résultats : essaie avec les tags healthcare génériques
   if (results.length === 0) {
-    const fallbackTags = ['amenity=hospital', 'amenity=clinic', 'amenity=doctors', 'healthcare=*']
-    const isSameFallback = osmTags.length === fallbackTags.length && osmTags.every(t => fallbackTags.includes(t))
-    if (!isSameFallback) {
-      return await tryTags(['amenity=hospital', 'amenity=clinic', 'amenity=doctors'])
-    }
+    return await tryQuery(buildOverpassQuery(lat, lon, rayon, ['amenity=hospital', 'amenity=clinic', 'amenity=doctors']))
   }
   return results
 }
@@ -167,18 +186,21 @@ async function fetchOverpass(lat: number, lon: number, rayon: number, osmTags: s
 // ─── Composant principal ──────────────────────────────────────────────────────
 
 export default function RecherchePage() {
-  const [villeKey, setVilleKey]       = useState('Yaoundé')
+  const [villeKey, setVilleKey]           = useState('Yaoundé')
   const [specialiteIdx, setSpecialiteIdx] = useState(1) // "Hôpitaux"
-  const [loadingMF, setLoadingMF]     = useState(false)
-  const [loadingOSM, setLoadingOSM]   = useState(false)
-  const [cliniques, setCliniques]     = useState<Clinique[]>([])
-  const [osmCount, setOsmCount]       = useState(0)
-  const [mfCount, setMfCount]         = useState(0)
-  const [error, setError]             = useState('')
-  const [selected, setSelected]       = useState<Clinique | null>(null)
-  const [searched, setSearched]       = useState(false)
+  const [texteLibre, setTexteLibre]       = useState('')
+  const [loadingMF, setLoadingMF]         = useState(false)
+  const [loadingOSM, setLoadingOSM]       = useState(false)
+  const [cliniques, setCliniques]         = useState<Clinique[]>([])
+  const [osmCount, setOsmCount]           = useState(0)
+  const [mfCount, setMfCount]             = useState(0)
+  const [error, setError]                 = useState('')
+  const [selected, setSelected]           = useState<Clinique | null>(null)
+  const [searched, setSearched]           = useState(false)
 
   const specialite = SPECIALITES[specialiteIdx]
+  // Si texte libre, on l'utilise comme label affiché
+  const labelRecherche = texteLibre.trim() || specialite.label
 
   const handleSearch = useCallback(async () => {
     const coords = VILLES[villeKey]
@@ -193,10 +215,14 @@ export default function RecherchePage() {
     setOsmCount(0)
     setMfCount(0)
 
+    const libre = texteLibre.trim()
+
     // ── 1. Supabase (rapide) ──────────────────────────────────────────────────
-    const mfPromise = fetch(
-      `/api/search-cliniques?ville=${encodeURIComponent(villeKey)}&specialite=${specialite.value}`
-    ).then(r => r.json()).then(data => {
+    const apiUrl = libre
+      ? `/api/search-cliniques?ville=${encodeURIComponent(villeKey)}&q=${encodeURIComponent(libre)}`
+      : `/api/search-cliniques?ville=${encodeURIComponent(villeKey)}&specialite=${specialite.value}`
+
+    const mfPromise = fetch(apiUrl).then(r => r.json()).then(data => {
       if (data.success) {
         const mf: Clinique[] = data.cliniques
         setMfCount(mf.length)
@@ -205,7 +231,7 @@ export default function RecherchePage() {
     }).catch(() => {}).finally(() => setLoadingMF(false))
 
     // ── 2. Overpass depuis le browser (sans limite de timeout Vercel) ─────────
-    const osmPromise = fetchOverpass(coords.lat, coords.lon, 15000, specialite.osmTags).then(osm => {
+    const osmPromise = fetchOverpass(coords.lat, coords.lon, 15000, specialite.osmTags, libre || undefined).then(osm => {
       setOsmCount(osm.length)
       setCliniques(prev => mergeResults(prev, osm, coords.lat, coords.lon))
     }).catch(e => {
@@ -214,7 +240,7 @@ export default function RecherchePage() {
     }).finally(() => setLoadingOSM(false))
 
     await Promise.allSettled([mfPromise, osmPromise])
-  }, [villeKey, specialite])
+  }, [villeKey, specialite, texteLibre])
 
   const loading = loadingMF || loadingOSM
 
@@ -245,24 +271,59 @@ export default function RecherchePage() {
           Choisissez votre ville et la spécialité pour voir tous les établissements à proximité
         </p>
 
-        <div className="max-w-2xl mx-auto bg-white rounded-2xl p-2 flex flex-col sm:flex-row gap-2 shadow-2xl">
-          <select value={villeKey} onChange={e => setVilleKey(e.target.value)}
-            className="flex-1 px-4 py-3 text-[#0C1E35] text-sm outline-none rounded-xl bg-[#F4F7FB] cursor-pointer">
-            {Object.keys(VILLES).sort().map(v => (
-              <option key={v} value={v}>{v}</option>
-            ))}
-          </select>
-          <select value={specialiteIdx} onChange={e => setSpecialiteIdx(Number(e.target.value))}
-            className="flex-1 px-4 py-3 text-[#0C1E35] text-sm outline-none rounded-xl bg-[#F4F7FB] cursor-pointer">
-            {SPECIALITES.map((s, i) => (
-              <option key={s.value} value={i}>{s.label}</option>
-            ))}
-          </select>
-          <button onClick={handleSearch} disabled={loading}
-            className="flex items-center justify-center gap-2 bg-[#00E5A0] text-[#060D1A] px-6 py-3 rounded-xl font-black text-sm hover:bg-[#00B87D] transition-colors disabled:opacity-60">
-            {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Search className="w-4 h-4" />}
-            {loading ? 'Recherche...' : 'Rechercher'}
-          </button>
+        <div className="max-w-2xl mx-auto flex flex-col gap-2">
+          {/* Ligne principale */}
+          <div className="bg-white rounded-2xl p-2 flex flex-col sm:flex-row gap-2 shadow-2xl">
+            <select value={villeKey} onChange={e => setVilleKey(e.target.value)}
+              className="flex-1 px-4 py-3 text-[#0C1E35] text-sm outline-none rounded-xl bg-[#F4F7FB] cursor-pointer">
+              {Object.keys(VILLES).sort().map(v => (
+                <option key={v} value={v}>{v}</option>
+              ))}
+            </select>
+            <select value={specialiteIdx} onChange={e => { setSpecialiteIdx(Number(e.target.value)); setTexteLibre('') }}
+              className="flex-1 px-4 py-3 text-[#0C1E35] text-sm outline-none rounded-xl bg-[#F4F7FB] cursor-pointer">
+              {SPECIALITES.map((s, i) => (
+                <option key={s.value} value={i}>{s.label}</option>
+              ))}
+            </select>
+            <button onClick={handleSearch} disabled={loading}
+              className="flex items-center justify-center gap-2 bg-[#00E5A0] text-[#060D1A] px-6 py-3 rounded-xl font-black text-sm hover:bg-[#00B87D] transition-colors disabled:opacity-60">
+              {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Search className="w-4 h-4" />}
+              {loading ? 'Recherche...' : 'Rechercher'}
+            </button>
+          </div>
+
+          {/* Champ texte libre */}
+          <div className="relative">
+            <input
+              list="specialites-suggestions"
+              type="text"
+              value={texteLibre}
+              onChange={e => setTexteLibre(e.target.value)}
+              onKeyDown={e => e.key === 'Enter' && handleSearch()}
+              placeholder="Ou tapez une spécialité précise… (ex : dialyse, oncologie, ORL, neurologie)"
+              className="w-full px-4 py-2.5 rounded-xl bg-white/10 border border-white/20 text-white text-sm placeholder:text-white/30 outline-none focus:border-[#00E5A0]/50 focus:bg-white/15 transition-all"
+            />
+            <datalist id="specialites-suggestions">
+              {SPECIALITES.map(s => <option key={s.value} value={s.label} />)}
+              {['Dialyse','Oncologie','Neurologie','ORL','Urologie','Ophtalmologie',
+                'Orthopédie','Psychiatrie','Endocrinologie','Pneumologie','Gastro-entérologie',
+                'Rhumatologie','Hématologie','Infectiologie','Chirurgie générale'].map(s => (
+                <option key={s} value={s} />
+              ))}
+            </datalist>
+            {texteLibre && (
+              <button onClick={() => setTexteLibre('')}
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-white/40 hover:text-white/80 text-xs transition-colors">
+                ✕
+              </button>
+            )}
+          </div>
+          {texteLibre.trim() && (
+            <p className="text-[#00E5A0]/70 text-xs text-left px-1">
+              Recherche libre activée : <strong className="text-[#00E5A0]">&ldquo;{texteLibre.trim()}&rdquo;</strong> — OSM cherchera dans les noms et spécialités
+            </p>
+          )}
         </div>
 
         {/* Indicateur de chargement en 2 étapes */}
@@ -314,7 +375,7 @@ export default function RecherchePage() {
             {/* Liste 1/3 */}
             <div className="flex flex-col gap-3 overflow-y-auto" style={{ maxHeight: '520px' }}>
               <h2 className="text-white font-bold text-sm sticky top-0 bg-[#060D1A] py-1">
-                {cliniques.length} résultat{cliniques.length > 1 ? 's' : ''} · {specialite.label} à {villeKey}
+                {cliniques.length} résultat{cliniques.length > 1 ? 's' : ''} · {labelRecherche} à {villeKey}
                 {loadingOSM && <span className="ml-2 text-white/30 font-normal text-xs">+ OSM en cours...</span>}
               </h2>
               {cliniques.map(c => (
@@ -360,8 +421,8 @@ export default function RecherchePage() {
       {searched && !loading && cliniques.length === 0 && (
         <div className="text-center py-16 text-white/30">
           <Search className="w-10 h-10 mx-auto mb-3 opacity-40" />
-          <p className="text-lg">Aucun établissement trouvé à {villeKey}</p>
-          <p className="text-sm mt-2">Essayez une autre ville ou une autre spécialité</p>
+          <p className="text-lg">Aucun établissement trouvé pour &ldquo;{labelRecherche}&rdquo; à {villeKey}</p>
+          <p className="text-sm mt-2">Essayez une autre ville, une autre spécialité, ou reformulez votre recherche</p>
         </div>
       )}
 

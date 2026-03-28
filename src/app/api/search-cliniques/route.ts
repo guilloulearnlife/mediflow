@@ -9,24 +9,36 @@ export async function GET(request: NextRequest) {
     const { searchParams } = request.nextUrl
     const ville     = searchParams.get('ville')     || 'Yaoundé'
     const specialite = searchParams.get('specialite') || 'hospital'
+    const q         = searchParams.get('q')         || '' // texte libre (ex: dialyse)
 
     const supabase = await createClient()
     let query = supabase.from('cliniques').select('*').eq('actif', true)
 
     if (ville.trim()) query = query.ilike('ville', `%${ville.trim()}%`)
 
-    // Filtre spécialité sur la colonne array si ce n'est pas "all"
-    // (filtre JS car Supabase ne fait pas ilike sur array)
     const { data: all, error } = await query
     if (error) throw error
 
-    const specialiteLower = specialite.toLowerCase()
-    const cliniques = specialiteLower === 'all' || specialiteLower === 'hospital'
-      ? all
-      : (all ?? []).filter(c => {
-          const specs = (c.specialites as string[] | null) ?? []
-          return specs.some(s => s.toLowerCase().includes(specialiteLower))
-        })
+    let cliniques
+    if (q.trim()) {
+      // Recherche texte libre : filtre sur nom ET specialites[]
+      const qLower = q.trim().toLowerCase()
+      cliniques = (all ?? []).filter(c => {
+        const specs = (c.specialites as string[] | null) ?? []
+        return (
+          c.nom?.toLowerCase().includes(qLower) ||
+          specs.some(s => s.toLowerCase().includes(qLower))
+        )
+      })
+    } else {
+      const specialiteLower = specialite.toLowerCase()
+      cliniques = specialiteLower === 'all' || specialiteLower === 'hospital'
+        ? all
+        : (all ?? []).filter(c => {
+            const specs = (c.specialites as string[] | null) ?? []
+            return specs.some(s => s.toLowerCase().includes(specialiteLower))
+          })
+    }
 
     return NextResponse.json({
       success:  true,
