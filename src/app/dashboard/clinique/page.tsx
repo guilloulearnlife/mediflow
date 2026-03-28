@@ -3,6 +3,7 @@ import { redirect } from 'next/navigation'
 import { getProfile } from '@/lib/profile'
 import Navbar from '@/components/Navbar'
 import Link from 'next/link'
+import AjouterMedecinForm from '@/components/AjouterMedecinForm'
 import {
   Building2, CalendarDays, Users, TrendingUp,
   MapPin, Phone, Mail, CalendarPlus, UserPlus,
@@ -260,28 +261,27 @@ export default async function CliniqueePage() {
             </div>
 
             {/* Médecins */}
-            {medecins && medecins.length > 0 && (
-              <div className="bg-white border border-slate-200 rounded-xl p-5 shadow-[0_1px_3px_0_rgb(0,0,0,0.04)]">
-                <h3 className="text-xs font-semibold uppercase tracking-widest text-slate-400 mb-4">
-                  Médecins <span className="text-slate-300 font-normal normal-case tracking-normal">({medecins.length})</span>
-                </h3>
-                <div className="flex flex-col gap-2">
-                  {medecins.slice(0, 4).map((m) => {
-                    const initials = `${m.prenom?.[0] ?? ''}${m.nom?.[0] ?? ''}`.toUpperCase() || '?'
-                    return (
-                      <div key={m.id} className="flex items-center gap-3">
-                        <div className="w-7 h-7 rounded-full bg-slate-100 border border-slate-200 flex items-center justify-center text-[10px] font-semibold text-slate-600 flex-shrink-0">
-                          {initials}
-                        </div>
-                        <span className="text-sm text-slate-700 truncate">
-                          {m.prenom} {m.nom}
-                        </span>
+            <div className="bg-white border border-slate-200 rounded-xl p-5 shadow-[0_1px_3px_0_rgb(0,0,0,0.04)]">
+              <h3 className="text-xs font-semibold uppercase tracking-widest text-slate-400 mb-4">
+                Médecins <span className="text-slate-300 font-normal normal-case tracking-normal">({medecins?.length ?? 0})</span>
+              </h3>
+              <div className="flex flex-col gap-2 mb-3">
+                {medecins && medecins.map((m) => {
+                  const initials = `${m.prenom?.[0] ?? ''}${m.nom?.[0] ?? ''}`.toUpperCase() || '?'
+                  return (
+                    <div key={m.id} className="flex items-center gap-3">
+                      <div className="w-7 h-7 rounded-full bg-slate-100 border border-slate-200 flex items-center justify-center text-[10px] font-semibold text-slate-600 flex-shrink-0">
+                        {initials}
                       </div>
-                    )
-                  })}
-                </div>
+                      <span className="text-sm text-slate-700 truncate">
+                        Dr. {m.prenom} {m.nom}
+                      </span>
+                    </div>
+                  )
+                })}
               </div>
-            )}
+              {cliniqueId && <AjouterMedecinForm cliniqueId={cliniqueId} />}
+            </div>
 
           </div>
         </div>
