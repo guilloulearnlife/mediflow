@@ -3,14 +3,9 @@ import { redirect } from 'next/navigation'
 import Link from 'next/link'
 import Navbar from '@/components/Navbar'
 import { getProfile } from '@/lib/profile'
+import RdvStatusSelect from '@/components/RdvStatusSelect'
 import { CalendarPlus, Calendar } from 'lucide-react'
-
-const statusConfig = {
-  confirme: { label: 'Confirmé', classes: 'bg-blue-50 text-blue-700 border border-blue-200',    dot: 'bg-blue-500' },
-  termine:  { label: 'Terminé',  classes: 'bg-emerald-50 text-emerald-700 border border-emerald-200', dot: 'bg-emerald-500' },
-  annule:   { label: 'Annulé',   classes: 'bg-slate-50 text-slate-500 border border-slate-200', dot: 'bg-slate-400' },
-  absent:   { label: 'Absent',   classes: 'bg-red-50 text-red-600 border border-red-200',       dot: 'bg-red-500' },
-}
+import type { Statut } from '@/app/actions/rdv'
 
 export default async function RdvPage() {
   const supabase = await createClient()
@@ -21,12 +16,16 @@ export default async function RdvPage() {
   const role = profile?.role ?? 'secretaire'
   const cliniqueId = profile?.clinique_id
 
+  const { data: clinique } = cliniqueId
+    ? await supabase.from('cliniques').select('nom').eq('id', cliniqueId).single()
+    : { data: null }
+
   let rdvQuery = supabase
     .from('rendez_vous')
     .select('*, patients(nom, prenom, telephone)')
     .order('date_rdv', { ascending: false })
     .order('heure_rdv', { ascending: true })
-    .limit(50)
+    .limit(100)
   if (cliniqueId) rdvQuery = rdvQuery.eq('clinique_id', cliniqueId)
   const { data: rdvs } = await rdvQuery
 
@@ -35,6 +34,7 @@ export default async function RdvPage() {
       <Navbar
         email={user.email!}
         role={role}
+        cliniqueName={clinique?.nom}
         nomPrenom={profile ? `${profile.prenom ?? ''} ${profile.nom ?? ''}`.trim() : undefined}
       />
 
@@ -44,7 +44,7 @@ export default async function RdvPage() {
         <div className="flex items-center justify-between mb-8">
           <div>
             <h1 className="text-xl font-semibold text-slate-900 tracking-tight">Rendez-vous</h1>
-            <p className="text-sm text-slate-400 mt-0.5">{rdvs?.length ?? 0} rendez-vous au total</p>
+            <p className="text-sm text-slate-400 mt-0.5">{rdvs?.length ?? 0} rendez-vous</p>
           </div>
           <Link
             href="/dashboard/rdv/nouveau"
@@ -57,23 +57,20 @@ export default async function RdvPage() {
 
         {/* Table */}
         <div className="bg-white border border-slate-200 rounded-xl shadow-[0_1px_3px_0_rgb(0,0,0,0.04)] overflow-hidden">
-          {/* Table header */}
           <div className="grid grid-cols-[auto_1fr_auto_auto_auto_auto] gap-4 px-6 py-3 border-b border-slate-100 bg-slate-50/80">
             <span className="text-[10px] font-semibold uppercase tracking-widest text-slate-400 w-8">—</span>
             <span className="text-[10px] font-semibold uppercase tracking-widest text-slate-400">Patient</span>
-            <span className="text-[10px] font-semibold uppercase tracking-widest text-slate-400 w-28">Spécialité</span>
+            <span className="text-[10px] font-semibold uppercase tracking-widest text-slate-400 w-28">Médecin</span>
             <span className="text-[10px] font-semibold uppercase tracking-widest text-slate-400 w-24 text-right">Date</span>
             <span className="text-[10px] font-semibold uppercase tracking-widest text-slate-400 w-12 text-right">Heure</span>
-            <span className="text-[10px] font-semibold uppercase tracking-widest text-slate-400 w-24 text-right">Statut</span>
+            <span className="text-[10px] font-semibold uppercase tracking-widest text-slate-400 w-28 text-right">Statut</span>
           </div>
 
           <div className="divide-y divide-slate-100">
             {rdvs && rdvs.length > 0 ? (
               rdvs.map((rdv) => {
                 const patient = rdv.patients as { nom: string; prenom: string; telephone: string } | null
-                const s = statusConfig[rdv.statut as keyof typeof statusConfig] ?? statusConfig.confirme
                 const initials = `${patient?.prenom?.[0] ?? ''}${patient?.nom?.[0] ?? ''}`.toUpperCase() || '?'
-                const specialite = (rdv as Record<string, unknown>).specialite as string | null
                 return (
                   <div key={rdv.id}
                     className="grid grid-cols-[auto_1fr_auto_auto_auto_auto] gap-4 items-center px-6 py-3.5 hover:bg-slate-50 transition-colors duration-150">
@@ -89,13 +86,9 @@ export default async function RdvPage() {
                       </p>
                     </div>
                     <div className="w-28">
-                      {specialite ? (
-                        <span className="inline-block px-2 py-0.5 rounded-md bg-teal-50 border border-teal-200 text-teal-700 text-xs font-medium truncate max-w-full">
-                          {specialite}
-                        </span>
-                      ) : (
-                        <span className="text-xs text-slate-300">—</span>
-                      )}
+                      <span className="text-xs text-slate-500 truncate block">
+                        {rdv.medecin ?? '—'}
+                      </span>
                     </div>
                     <span className="text-sm font-mono text-slate-500 w-24 text-right tabular-nums">
                       {new Date(rdv.date_rdv).toLocaleDateString('fr-FR')}
@@ -103,11 +96,8 @@ export default async function RdvPage() {
                     <span className="text-sm font-mono font-medium text-slate-900 w-12 text-right tabular-nums">
                       {rdv.heure_rdv.slice(0, 5)}
                     </span>
-                    <div className="w-24 flex justify-end">
-                      <span className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md text-xs font-medium ${s.classes}`}>
-                        <span className={`w-1.5 h-1.5 rounded-full ${s.dot}`} />
-                        {s.label}
-                      </span>
+                    <div className="w-28 flex justify-end">
+                      <RdvStatusSelect rdvId={rdv.id} statut={rdv.statut as Statut} />
                     </div>
                   </div>
                 )

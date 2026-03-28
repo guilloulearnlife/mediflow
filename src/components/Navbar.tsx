@@ -11,6 +11,7 @@ import {
   Users,
   Stethoscope,
   Settings,
+  Building2,
   LogOut,
   type LucideIcon,
 } from 'lucide-react'
@@ -40,10 +41,11 @@ const navItems: Record<Role, NavItem[]> = {
     { href: '/dashboard/admin',         label: 'Admin',          Icon: Settings },
   ],
   directeur: [
-    { href: '/dashboard',           label: 'Dashboard',    Icon: LayoutDashboard },
-    { href: '/dashboard/rdv',       label: 'Rendez-vous',  Icon: Calendar },
-    { href: '/dashboard/patients',  label: 'Patients',     Icon: Users },
-    { href: '/dashboard/medecin',   label: 'Médecins',     Icon: Stethoscope },
+    { href: '/dashboard',             label: 'Dashboard',    Icon: LayoutDashboard },
+    { href: '/dashboard/rdv',         label: 'Rendez-vous',  Icon: Calendar },
+    { href: '/dashboard/rdv/nouveau', label: 'Nouveau RDV',  Icon: CalendarPlus },
+    { href: '/dashboard/patients',    label: 'Patients',     Icon: Users },
+    { href: '/dashboard/clinique',    label: 'Ma clinique',  Icon: Building2 },
   ],
   gerant: [
     { href: '/dashboard',             label: 'Dashboard',    Icon: LayoutDashboard },
