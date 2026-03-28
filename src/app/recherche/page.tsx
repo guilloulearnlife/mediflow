@@ -18,16 +18,28 @@ const VILLES = [
   'Yaoundé', 'Douala', 'Garoua', 'Bamenda', 'Bafoussam',
   'Maroua', 'Ngaoundéré', 'Bertoua', 'Ebolowa', 'Kribi',
   'Limbé', 'Buéa', 'Dschang', 'Kumba', 'Foumban',
+  'Edéa', 'Mbalmayo', 'Nkongsamba', 'Loum', 'Bafia',
+  'Mbouda', 'Meiganga', 'Kousséri', 'Mora', 'Wum',
+  'Kumbo', 'Batouri', 'Sangmélima', 'Fundong', 'Tibati',
+  'Banyo', 'Yokadouma', 'Abong-Mbang', 'Bafang', 'Melong',
 ]
 
 const SPECIALITES = [
-  { value: 'hospital',    label: 'Hôpitaux' },
-  { value: 'clinique',    label: 'Cliniques générales' },
-  { value: 'pharmacie',   label: 'Pharmacies' },
-  { value: 'dentiste',    label: 'Dentistes' },
-  { value: 'laboratoire', label: 'Laboratoires' },
-  { value: 'maternite',   label: 'Maternités' },
-  { value: 'all',         label: 'Tous les établissements' },
+  { value: 'all',           label: 'Tous les établissements' },
+  { value: 'hospital',      label: 'Hôpitaux' },
+  { value: 'clinique',      label: 'Cliniques générales' },
+  { value: 'urgences',      label: 'Urgences' },
+  { value: 'pharmacie',     label: 'Pharmacies' },
+  { value: 'dentiste',      label: 'Dentistes' },
+  { value: 'laboratoire',   label: 'Laboratoires d\'analyses' },
+  { value: 'maternite',     label: 'Maternités' },
+  { value: 'pediatrie',     label: 'Pédiatrie' },
+  { value: 'gynecologie',   label: 'Gynécologie' },
+  { value: 'cardiologie',   label: 'Cardiologie' },
+  { value: 'ophtalmologie', label: 'Ophtalmologie' },
+  { value: 'dermatologie',  label: 'Dermatologie' },
+  { value: 'radiologie',    label: 'Radiologie / Imagerie' },
+  { value: 'kinesitherapie',label: 'Kinésithérapie' },
 ]
 
 interface Clinique {

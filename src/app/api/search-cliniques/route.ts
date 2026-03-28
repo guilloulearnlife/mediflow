@@ -1,4 +1,3 @@
-// app/api/search-cliniques/route.ts
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase-server'
 
@@ -17,7 +16,6 @@ interface OSMElement {
     'addr:street'?: string
     'addr:housenumber'?: string
     'addr:city'?: string
-    'addr:postcode'?: string
     'contact:phone'?: string
     phone?: string
     'contact:email'?: string
@@ -32,8 +30,6 @@ interface OSMElement {
 }
 
 interface OverpassResponse {
-  version: number
-  generator: string
   elements: OSMElement[]
 }
 
@@ -59,139 +55,212 @@ interface CliniqueUnifiee {
 }
 
 // ============================================================================
-// API ROUTE PRINCIPALE
+// COORDONNÉES PRÉ-CACHÉES — élimine l'appel Nominatim pour les villes connues
+// ============================================================================
+
+const CITY_COORDS: Record<string, { lat: number; lon: number }> = {
+  'Yaoundé':       { lat: 3.8667,  lon: 11.5167 },
+  'Douala':        { lat: 4.0511,  lon: 9.7679  },
+  'Garoua':        { lat: 9.3017,  lon: 13.3974 },
+  'Bamenda':       { lat: 5.9597,  lon: 10.1460 },
+  'Bafoussam':     { lat: 5.4764,  lon: 10.4175 },
+  'Maroua':        { lat: 10.5918, lon: 14.3158 },
+  'Ngaoundéré':    { lat: 7.3167,  lon: 13.5833 },
+  'Bertoua':       { lat: 4.5797,  lon: 13.6853 },
+  'Ebolowa':       { lat: 2.9000,  lon: 11.1500 },
+  'Kribi':         { lat: 2.9400,  lon: 9.9100  },
+  'Limbé':         { lat: 4.0203,  lon: 9.1997  },
+  'Buéa':          { lat: 4.1527,  lon: 9.2369  },
+  'Dschang':       { lat: 5.4500,  lon: 10.0500 },
+  'Kumba':         { lat: 4.6364,  lon: 9.4469  },
+  'Foumban':       { lat: 5.7264,  lon: 10.9067 },
+  'Edéa':          { lat: 3.7997,  lon: 10.1333 },
+  'Mbalmayo':      { lat: 3.5167,  lon: 11.5000 },
+  'Nkongsamba':    { lat: 4.9500,  lon: 9.9333  },
+  'Loum':          { lat: 4.7000,  lon: 9.7333  },
+  'Bafia':         { lat: 4.7497,  lon: 11.2333 },
+  'Mbouda':        { lat: 5.6333,  lon: 10.2500 },
+  'Meiganga':      { lat: 6.5167,  lon: 14.3000 },
+  'Kousséri':      { lat: 12.0833, lon: 15.0333 },
+  'Mora':          { lat: 11.0500, lon: 14.1500 },
+  'Wum':           { lat: 6.3833,  lon: 10.0667 },
+  'Kumbo':         { lat: 6.2167,  lon: 10.6500 },
+  'Batouri':       { lat: 4.4333,  lon: 14.3667 },
+  'Sangmélima':    { lat: 2.9333,  lon: 11.9833 },
+  'Fundong':       { lat: 6.3667,  lon: 10.2833 },
+  'Tibati':        { lat: 6.4667,  lon: 12.6167 },
+  'Banyo':         { lat: 6.7500,  lon: 11.8167 },
+  'Tignère':       { lat: 7.3667,  lon: 12.6500 },
+  'Yokadouma':     { lat: 3.5167,  lon: 15.0500 },
+  'Abong-Mbang':   { lat: 3.9833,  lon: 13.1833 },
+  'Melong':        { lat: 5.1167,  lon: 9.9500  },
+  'Bafang':        { lat: 5.1500,  lon: 10.1833 },
+  'Nanga-Eboko':   { lat: 4.6833,  lon: 12.3667 },
+}
+
+// ============================================================================
+// MAPPING SPÉCIALITÉS → TAGS OSM
+// Chaque spécialité a des tags primaires + des tags de fallback (tous établissements)
+// ============================================================================
+
+const SPECIALITE_OSM: Record<string, { primary: string[]; fallback: string[] }> = {
+  'hospital':       { primary: ['amenity=hospital'],              fallback: [] },
+  'clinique':       { primary: ['amenity=clinic', 'amenity=doctors'], fallback: ['amenity=hospital'] },
+  'pharmacie':      { primary: ['amenity=pharmacy'],              fallback: [] },
+  'dentiste':       { primary: ['healthcare=dentist', 'amenity=dentist'], fallback: ['amenity=clinic', 'amenity=hospital'] },
+  'laboratoire':    { primary: ['healthcare=laboratory', 'amenity=laboratory'], fallback: ['amenity=clinic', 'amenity=hospital'] },
+  'maternite':      { primary: ['healthcare=midwife', 'amenity=maternity'], fallback: ['amenity=hospital', 'amenity=clinic'] },
+  'ophtalmologie':  { primary: ['healthcare=optometrist', 'amenity=optometrist'], fallback: ['amenity=clinic', 'amenity=hospital'] },
+  'pediatrie':      { primary: ['healthcare=paediatrician'],      fallback: ['amenity=clinic', 'amenity=hospital'] },
+  'gynecologie':    { primary: ['healthcare=gynaecologist'],      fallback: ['amenity=clinic', 'amenity=hospital'] },
+  'cardiologie':    { primary: ['healthcare=cardiologist'],       fallback: ['amenity=hospital', 'amenity=clinic'] },
+  'dermatologie':   { primary: ['healthcare=dermatologist'],      fallback: ['amenity=clinic', 'amenity=hospital'] },
+  'radiologie':     { primary: ['healthcare=radiologist', 'healthcare=laboratory'], fallback: ['amenity=hospital'] },
+  'urgences':       { primary: ['amenity=hospital'],              fallback: [] },
+  'kinesitherapie': { primary: ['healthcare=physiotherapist'],    fallback: ['amenity=clinic'] },
+  'all':            { primary: ['amenity=hospital', 'amenity=clinic', 'amenity=doctors', 'amenity=pharmacy'], fallback: [] },
+}
+
+// ============================================================================
+// API ROUTE
 // ============================================================================
 
 export async function GET(request: NextRequest) {
   try {
     const searchParams = request.nextUrl.searchParams
-    const ville = searchParams.get('ville') || 'Yaoundé'
+    const ville     = searchParams.get('ville')     || 'Yaoundé'
     const specialite = searchParams.get('specialite') || 'hospital'
-    const rayon = parseInt(searchParams.get('rayon') || '10000')
+    const rayon     = Math.min(parseInt(searchParams.get('rayon') || '15000'), 30000)
 
-    // 1. RÉCUPÉRER LES CLINIQUES MEDIFLOW (Supabase)
+    // 1. CLINIQUES MEDIFLOW (Supabase) — parallèle avec OSM
     const supabase = await createClient()
-    const { data: cliniquesMediaflow, error } = await supabase
+    const supabasePromise = supabase
       .from('cliniques')
       .select('*')
       .eq('actif', true)
       .ilike('ville', `%${ville}%`)
 
-    if (error) {
-      console.error('Erreur Supabase:', error)
+    // 2. COORDONNÉES VILLE — cache en premier, Nominatim en fallback
+    const coords = CITY_COORDS[ville] ?? await getCityCoordinates(ville)
+
+    // 3. RECHERCHE OSM (seulement si coordonnées disponibles)
+    let cliniquesOSM: CliniqueUnifiee[] = []
+    if (coords) {
+      cliniquesOSM = await searchOverpass(coords.lat, coords.lon, rayon, specialite)
     }
 
-    // 2. RÉCUPÉRER LES CLINIQUES OPENSTREETMAP
-    const cliniquesOSM = await searchOpenStreetMap(ville, specialite, rayon)
+    // 4. RÉSULTATS SUPABASE
+    const { data: cliniquesMediaflow } = await supabasePromise
 
-    // 3. FUSIONNER ET DÉDUPLIQUER
-    const cliniquesUnifiees = mergeAndDeduplicate(
-      cliniquesMediaflow || [],
-      cliniquesOSM
-    )
+    // 5. FUSION + DÉDUPLICATION
+    const merged = mergeAndDeduplicate(cliniquesMediaflow || [], cliniquesOSM)
 
-    // 4. TRIER PAR PERTINENCE (inscrites en premier, puis par distance)
-    const cliniquesTriees = cliniquesUnifiees.sort((a, b) => {
+    const sorted = merged.sort((a, b) => {
       if (a.inscrite && !b.inscrite) return -1
       if (!a.inscrite && b.inscrite) return 1
-      const distanceA = a.distance || 999999
-      const distanceB = b.distance || 999999
-      return distanceA - distanceB
+      return (a.distance ?? 9999) - (b.distance ?? 9999)
     })
 
     return NextResponse.json({
-      success: true,
-      total: cliniquesTriees.length,
-      mediflow_count: cliniquesMediaflow?.length || 0,
-      osm_count: cliniquesOSM.length,
+      success:        true,
+      total:          sorted.length,
+      mediflow_count: cliniquesMediaflow?.length ?? 0,
+      osm_count:      cliniquesOSM.length,
       ville,
       specialite,
       rayon,
-      cliniques: cliniquesTriees,
-      note: "Source: MediFlow + OpenStreetMap (données communautaires)"
+      cliniques:      sorted,
     })
 
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : 'Erreur inconnue'
-    console.error('Erreur recherche cliniques:', error)
-    return NextResponse.json(
-      { success: false, error: message },
-      { status: 500 }
-    )
+    console.error('Erreur API search-cliniques:', error)
+    return NextResponse.json({ success: false, error: message }, { status: 500 })
   }
 }
 
 // ============================================================================
-// FONCTION: Recherche OpenStreetMap via Overpass API
+// OVERPASS — query optimisée avec nwr + fallback automatique
 // ============================================================================
 
-async function searchOpenStreetMap(
-  ville: string,
-  specialite: string,
-  rayon: number
+async function searchOverpass(
+  lat: number, lon: number, rayon: number, specialite: string
 ): Promise<CliniqueUnifiee[]> {
-  try {
-    const coordsVille = await getCityCoordinates(ville)
-    if (!coordsVille) {
-      console.warn(`Ville "${ville}" non trouvée dans Nominatim`)
-      return []
+  const mapping = SPECIALITE_OSM[specialite] ?? SPECIALITE_OSM['all']
+
+  // Tentative 1 : tags primaires
+  let results = await runOverpassQuery(lat, lon, rayon, mapping.primary)
+
+  // Fallback : si 0 résultats avec les tags primaires, on cherche tous les établissements
+  if (results.length === 0 && mapping.fallback.length > 0) {
+    results = await runOverpassQuery(lat, lon, rayon, mapping.fallback)
+  }
+
+  return results.map(el => {
+    const elLat = el.lat ?? el.center?.lat ?? 0
+    const elLon = el.lon ?? el.center?.lon ?? 0
+    return {
+      id:        `osm_${el.type}_${el.id}`,
+      nom:       el.tags?.name ?? 'Établissement de santé',
+      adresse:   buildAddress(el.tags),
+      ville:     el.tags?.['addr:city'] ?? '',
+      latitude:  elLat,
+      longitude: elLon,
+      telephone: el.tags?.['contact:phone'] ?? el.tags?.phone,
+      email:     el.tags?.['contact:email'] ?? el.tags?.email,
+      website:   el.tags?.website,
+      source:    'openstreetmap' as const,
+      actif:     true,
+      inscrite:  false,
+      osm_id:    el.id,
+      osm_type:  el.type,
+      specialites: extractSpecialites(el.tags),
+      horaires:  null,
+      distance:  calculateDistance(lat, lon, elLat, elLon) / 1000,
     }
+  }).filter(c => c.latitude !== 0 && c.longitude !== 0 && c.nom !== 'Établissement de santé')
+}
 
-    const overpassQuery = buildOverpassQuery(coordsVille.lat, coordsVille.lon, rayon, specialite)
+async function runOverpassQuery(
+  lat: number, lon: number, rayon: number, tags: string[]
+): Promise<OSMElement[]> {
+  if (tags.length === 0) return []
 
-    const overpassUrl = 'https://overpass-api.de/api/interpreter'
-    const response = await fetch(overpassUrl, {
-      method: 'POST',
+  // nwr = node + way + relation en une seule ligne → query plus courte et plus rapide
+  const tagBlocks = tags.map(tag => {
+    const [key, value] = tag.split('=')
+    return `nwr["${key}"="${value}"](around:${rayon},${lat},${lon});`
+  }).join('\n      ')
+
+  const query = `[out:json][timeout:20];
+(
+  ${tagBlocks}
+);
+out center tags;`
+
+  try {
+    const controller = new AbortController()
+    const timer = setTimeout(() => controller.abort(), 18000)
+
+    const res = await fetch('https://overpass-api.de/api/interpreter', {
+      method:  'POST',
       headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-      body: `data=${encodeURIComponent(overpassQuery)}`
+      body:    `data=${encodeURIComponent(query)}`,
+      signal:  controller.signal,
     })
 
-    if (!response.ok) {
-      console.error('Erreur Overpass API:', response.status, response.statusText)
-      return []
-    }
+    clearTimeout(timer)
+    if (!res.ok) return []
 
-    const data: OverpassResponse = await response.json()
-
-    const cliniques: CliniqueUnifiee[] = data.elements
-      .filter(element => element.tags?.name)
-      .map(element => {
-        const lat = element.lat || element.center?.lat || 0
-        const lon = element.lon || element.center?.lon || 0
-        const distance = calculateDistance(coordsVille.lat, coordsVille.lon, lat, lon) / 1000
-
-        return {
-          id: `osm_${element.type}_${element.id}`,
-          nom: element.tags?.name || 'Clinique',
-          adresse: buildAddress(element.tags),
-          ville: element.tags?.['addr:city'] || ville,
-          latitude: lat,
-          longitude: lon,
-          telephone: element.tags?.['contact:phone'] || element.tags?.phone,
-          email: element.tags?.['contact:email'] || element.tags?.email,
-          website: element.tags?.website,
-          source: 'openstreetmap' as const,
-          actif: true,
-          inscrite: false,
-          osm_id: element.id,
-          osm_type: element.type,
-          specialites: extractSpecialites(element.tags),
-          horaires: parseOpeningHours(element.tags?.opening_hours),
-          distance
-        }
-      })
-      .filter(c => c.latitude !== 0 && c.longitude !== 0)
-
-    return cliniques
-
-  } catch (error) {
-    console.error('Erreur recherche OpenStreetMap:', error)
+    const data: OverpassResponse = await res.json()
+    return data.elements.filter(e => e.tags?.name)
+  } catch {
     return []
   }
 }
 
 // ============================================================================
-// FONCTION: Obtenir coordonnées d'une ville via Nominatim
+// NOMINATIM — utilisé uniquement pour les villes hors cache
 // ============================================================================
 
 async function getCityCoordinates(ville: string): Promise<{ lat: number; lon: number } | null> {
@@ -202,98 +271,52 @@ async function getCityCoordinates(ville: string): Promise<{ lat: number; lon: nu
     url.searchParams.set('limit', '1')
     url.searchParams.set('countrycodes', 'cm')
 
-    const response = await fetch(url.toString(), {
-      headers: { 'User-Agent': 'MediFlow/1.0 (contact@mediflow.cm)' }
+    const res = await fetch(url.toString(), {
+      headers: { 'User-Agent': 'MediFlow/1.0 (contact@mediflow.cm)' },
+      signal: AbortSignal.timeout(5000),
     })
-
-    const data = await response.json()
-    if (data.length === 0) return null
-
-    return {
-      lat: parseFloat(data[0].lat),
-      lon: parseFloat(data[0].lon)
-    }
-  } catch (error) {
-    console.error('Erreur Nominatim:', error)
+    const data = await res.json()
+    if (!data.length) return null
+    return { lat: parseFloat(data[0].lat), lon: parseFloat(data[0].lon) }
+  } catch {
     return null
   }
 }
 
 // ============================================================================
-// FONCTION: Construire requête Overpass QL
-// ============================================================================
-
-function buildOverpassQuery(lat: number, lon: number, rayon: number, specialite: string): string {
-  const specialiteMapping: Record<string, string[]> = {
-    'hospital': ['amenity=hospital', 'amenity=clinic'],
-    'clinique': ['amenity=clinic', 'amenity=doctors'],
-    'pharmacie': ['amenity=pharmacy'],
-    'dentiste': ['healthcare=dentist'],
-    'laboratoire': ['healthcare=laboratory'],
-    'maternite': ['healthcare=midwife', 'amenity=hospital'],
-    'all': ['amenity=hospital', 'amenity=clinic', 'amenity=doctors']
-  }
-
-  const tags = specialiteMapping[specialite.toLowerCase()] || specialiteMapping['hospital']
-
-  const queries = tags.map(tag => {
-    const [key, value] = tag.split('=')
-    return `
-      node["${key}"="${value}"](around:${rayon},${lat},${lon});
-      way["${key}"="${value}"](around:${rayon},${lat},${lon});
-      relation["${key}"="${value}"](around:${rayon},${lat},${lon});
-    `
-  }).join('')
-
-  return `
-    [out:json][timeout:25];
-    (
-      ${queries}
-    );
-    out center tags;
-  `
-}
-
-// ============================================================================
-// FONCTION: Fusionner et dédupliquer
+// FUSION + DÉDUPLICATION
 // ============================================================================
 
 function mergeAndDeduplicate(
-  cliniquesMediaflow: Record<string, unknown>[],
-  cliniquesOSM: CliniqueUnifiee[]
+  mediflow: Record<string, unknown>[],
+  osm: CliniqueUnifiee[]
 ): CliniqueUnifiee[] {
-  const mediflowUnifiees: CliniqueUnifiee[] = cliniquesMediaflow.map(c => ({
-    id: c.id as string,
-    nom: c.nom as string,
-    adresse: (c.adresse as string) || '',
-    ville: (c.ville as string) || '',
-    latitude: parseFloat(c.latitude as string) || 0,
-    longitude: parseFloat(c.longitude as string) || 0,
-    telephone: c.telephone as string | undefined,
-    email: c.email as string | undefined,
+  const mf: CliniqueUnifiee[] = mediflow.map(c => ({
+    id:           c.id as string,
+    nom:          c.nom as string,
+    adresse:      (c.adresse as string) ?? '',
+    ville:        (c.ville as string) ?? '',
+    latitude:     parseFloat(c.latitude as string) || 0,
+    longitude:    parseFloat(c.longitude as string) || 0,
+    telephone:    c.telephone as string | undefined,
+    email:        c.email as string | undefined,
     whatsapp_number: c.whatsapp_number as string | undefined,
-    source: 'mediflow' as const,
-    actif: c.actif as boolean,
-    inscrite: true,
-    specialites: c.specialites as string[] | undefined,
-    horaires: c.horaires as Record<string, unknown> | null
+    source:       'mediflow' as const,
+    actif:        c.actif as boolean,
+    inscrite:     true,
+    specialites:  c.specialites as string[] | undefined,
+    horaires:     c.horaires as Record<string, unknown> | null,
   }))
 
-  const osmFiltrees = cliniquesOSM.filter(osmClinique => {
-    return !mediflowUnifiees.some(mediflowClinique => {
-      const nomSimilaire = similarity(
-        normalizeString(osmClinique.nom),
-        normalizeString(mediflowClinique.nom)
-      ) > 0.7
-      const distance = calculateDistance(
-        osmClinique.latitude, osmClinique.longitude,
-        mediflowClinique.latitude, mediflowClinique.longitude
-      )
-      return nomSimilaire && distance < 100
+  const osmFiltres = osm.filter(o =>
+    !mf.some(m => {
+      const nomSim = similarity(normalizeString(o.nom), normalizeString(m.nom)) > 0.7
+      const dist   = calculateDistance(o.latitude, o.longitude, m.latitude, m.longitude)
+      return nomSim && dist < 100
     })
-  })
+  )
 
-  return [...mediflowUnifiees, ...osmFiltrees]
+  return [...mf, ...osmFiltres]
 }
 
 // ============================================================================
@@ -304,77 +327,45 @@ function buildAddress(tags?: OSMElement['tags']): string {
   if (!tags) return ''
   const parts: string[] = []
   if (tags['addr:housenumber']) parts.push(tags['addr:housenumber']!)
-  if (tags['addr:street']) parts.push(tags['addr:street']!)
-  if (tags['addr:city']) parts.push(tags['addr:city']!)
-  return parts.join(', ') || 'Adresse non renseignée'
+  if (tags['addr:street'])     parts.push(tags['addr:street']!)
+  if (tags['addr:city'])       parts.push(tags['addr:city']!)
+  return parts.join(', ') || ''
 }
 
 function extractSpecialites(tags?: OSMElement['tags']): string[] {
   if (!tags) return []
-  const mapping: Record<string, string> = {
-    'hospital': 'Hôpital',
-    'clinic': 'Clinique',
-    'doctors': 'Médecine générale',
-    'dentist': 'Dentisterie',
-    'pharmacy': 'Pharmacie',
-    'laboratory': 'Laboratoire',
-    'midwife': 'Maternité',
-    'physiotherapist': 'Kinésithérapie',
-    'optician': 'Ophtalmologie'
+  const map: Record<string, string> = {
+    hospital: 'Hôpital', clinic: 'Clinique', doctors: 'Médecine générale',
+    dentist: 'Dentisterie', pharmacy: 'Pharmacie', laboratory: 'Laboratoire',
+    midwife: 'Maternité', physiotherapist: 'Kinésithérapie', optometrist: 'Ophtalmologie',
+    gynaecologist: 'Gynécologie', paediatrician: 'Pédiatrie', cardiologist: 'Cardiologie',
+    dermatologist: 'Dermatologie', radiologist: 'Radiologie',
   }
-  const specialites: string[] = []
-  if (tags.amenity && mapping[tags.amenity]) specialites.push(mapping[tags.amenity])
-  if (tags.healthcare && mapping[tags.healthcare]) specialites.push(mapping[tags.healthcare])
-  if (tags['healthcare:speciality']) specialites.push(tags['healthcare:speciality']!)
-  return [...new Set(specialites)]
-}
-
-function parseOpeningHours(openingHours?: string): Record<string, unknown> | null {
-  if (!openingHours) return null
-  try {
-    const horaires: Record<string, unknown> = {}
-    const jours = ['lundi', 'mardi', 'mercredi', 'jeudi', 'vendredi', 'samedi', 'dimanche']
-    const joursAbrev = ['Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa', 'Su']
-    joursAbrev.forEach((abrev, index) => {
-      if (openingHours.includes(abrev)) {
-        const match = openingHours.match(/(\d{2}:\d{2})-(\d{2}:\d{2})/)
-        if (match) {
-          horaires[jours[index]] = { ouverture: match[1], fermeture: match[2] }
-        }
-      }
-    })
-    return Object.keys(horaires).length > 0 ? horaires : null
-  } catch {
-    return null
-  }
+  const result: string[] = []
+  if (tags.amenity   && map[tags.amenity])    result.push(map[tags.amenity]!)
+  if (tags.healthcare && map[tags.healthcare]) result.push(map[tags.healthcare]!)
+  if (tags['healthcare:speciality'])           result.push(tags['healthcare:speciality']!)
+  return [...new Set(result)]
 }
 
 function normalizeString(str: string): string {
-  return str.toLowerCase()
-    .normalize('NFD')
-    .replace(/[\u0300-\u036f]/g, '')
-    .replace(/[^a-z0-9]/g, '')
+  return str.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9]/g, '')
 }
 
 function similarity(s1: string, s2: string): number {
   if (s1 === s2) return 1
   if (s1.length < 2 || s2.length < 2) return 0
-  const bigrams1 = new Set<string>()
-  const bigrams2 = new Set<string>()
-  for (let i = 0; i < s1.length - 1; i++) bigrams1.add(s1.substring(i, i + 2))
-  for (let i = 0; i < s2.length - 1; i++) bigrams2.add(s2.substring(i, i + 2))
-  const intersection = new Set([...bigrams1].filter(x => bigrams2.has(x)))
-  return (2 * intersection.size) / (bigrams1.size + bigrams2.size)
+  const b1 = new Set(Array.from({ length: s1.length - 1 }, (_, i) => s1.slice(i, i + 2)))
+  const b2 = new Set(Array.from({ length: s2.length - 1 }, (_, i) => s2.slice(i, i + 2)))
+  const inter = [...b1].filter(x => b2.has(x)).length
+  return (2 * inter) / (b1.size + b2.size)
 }
 
 function calculateDistance(lat1: number, lon1: number, lat2: number, lon2: number): number {
   const R = 6371e3
-  const φ1 = (lat1 * Math.PI) / 180
-  const φ2 = (lat2 * Math.PI) / 180
+  const φ1 = (lat1 * Math.PI) / 180, φ2 = (lat2 * Math.PI) / 180
   const Δφ = ((lat2 - lat1) * Math.PI) / 180
   const Δλ = ((lon2 - lon1) * Math.PI) / 180
-  const a =
-    Math.sin(Δφ / 2) * Math.sin(Δφ / 2) +
-    Math.cos(φ1) * Math.cos(φ2) * Math.sin(Δλ / 2) * Math.sin(Δλ / 2)
-  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a))
+  const a = Math.sin(Δφ/2)**2 + Math.cos(φ1)*Math.cos(φ2)*Math.sin(Δλ/2)**2
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a))
 }
