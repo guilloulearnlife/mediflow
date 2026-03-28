@@ -13,9 +13,17 @@ export default async function RecherchePage({
 
   let query = supabase.from('cliniques').select('*').eq('actif', true)
   if (ville.trim()) query = query.ilike('ville', `%${ville.trim()}%`)
-  if (q.trim()) query = query.ilike('nom', `%${q.trim()}%`)
 
-  const { data: cliniques } = await query
+  const { data: rawCliniques } = await query
+
+  // Filtrage q sur nom ET specialites (array) côté JS
+  const qLower = q.trim().toLowerCase()
+  const cliniques = qLower
+    ? rawCliniques?.filter(c =>
+        c.nom?.toLowerCase().includes(qLower) ||
+        (c.specialites as string[] | null)?.some(s => s.toLowerCase().includes(qLower))
+      )
+    : rawCliniques
 
   const { data: rdvMedecins } = await supabase
     .from('rendez_vous')
