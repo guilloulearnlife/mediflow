@@ -1,16 +1,12 @@
 'use client'
 import { useEffect } from 'react'
 import { usePathname, useSearchParams } from 'next/navigation'
-import { initPostHog } from '@/lib/posthog'
 import posthog from 'posthog-js'
 
+// PostHog est initialisé dans instrumentation-client.ts (avant le rendu React)
 export function PostHogProvider({ children }: { children: React.ReactNode }) {
   const pathname = usePathname()
   const searchParams = useSearchParams()
-
-  useEffect(() => {
-    initPostHog()
-  }, [])
 
   useEffect(() => {
     if (pathname) {
