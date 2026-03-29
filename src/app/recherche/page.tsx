@@ -4,6 +4,8 @@ import { useState, useCallback, useRef, useEffect, useDeferredValue } from 'reac
 import Link from 'next/link'
 import dynamic from 'next/dynamic'
 import { Search, MapPin, Phone, ArrowRight, CheckCircle, Loader2, X, Navigation } from 'lucide-react'
+import toast from 'react-hot-toast'
+import ClinicCardSkeleton from '@/components/ClinicCardSkeleton'
 
 const MapRechercheHybride = dynamic(() => import('@/components/MapRechercheHybride'), {
   ssr: false,
@@ -439,14 +441,26 @@ export default function RecherchePage() {
         setMfCount(mf.length)
         setCliniques(prev => mergeResults(prev, mf, coords!.lat, coords!.lon))
       }
-    }).catch(() => {}).finally(() => setLoadingMF(false))
-
-    // ── Overpass OSM ────────────────────────────────────────────────────────
-    const osmPromise = fetchOverpass(coords.lat, coords.lon, rayonMetres, specialite.osmTags, libre || undefined).then(osm => {
-      setOsmCount(osm.length)
-      setCliniques(prev => mergeResults(prev, osm, coords!.lat, coords!.lon))
     }).catch(() => {
-      setError('OpenStreetMap temporairement indisponible. Résultats MediFlow affichés.')
+      toast.error('Erreur lors du chargement des cliniques MediFlow')
+    }).finally(() => setLoadingMF(false))
+
+    // ── Overpass OSM via API route (cache Supabase 24h) ────────────────────
+    const osmUrl = libre
+      ? `/api/osm-cliniques?lat=${coords.lat}&lon=${coords.lon}&rayon=${rayon}&specialite=all&osmTags=${encodeURIComponent('amenity=hospital,amenity=clinic,amenity=doctors,amenity=pharmacy')}`
+      : `/api/osm-cliniques?lat=${coords.lat}&lon=${coords.lon}&rayon=${rayon}&specialite=${specialite.value}&osmTags=${encodeURIComponent(specialite.osmTags.join(','))}`
+
+    const osmPromise = fetch(osmUrl).then(r => r.json()).then(data => {
+      if (data.success) {
+        const osm: Clinique[] = (data.cliniques ?? []).map((c: Clinique) => ({
+          ...c,
+          distance: calcDist(coords!.lat, coords!.lon, c.latitude, c.longitude) / 1000,
+        }))
+        setOsmCount(osm.length)
+        setCliniques(prev => mergeResults(prev, osm, coords!.lat, coords!.lon))
+      }
+    }).catch(() => {
+      toast.error('OpenStreetMap temporairement indisponible')
     }).finally(() => setLoadingOSM(false))
 
     await Promise.allSettled([mfPromise, osmPromise])
@@ -631,6 +645,11 @@ export default function RecherchePage() {
                 <span className="text-white/40 font-normal ml-1">· {labelRecherche} · {rayon} km{locationCoords ? ` de ${locationCoords.label}` : ''}</span>
                 {loadingOSM && <span className="ml-2 text-white/30 font-normal text-xs">+ OSM en cours...</span>}
               </h2>
+              {loadingMF && cliniques.length === 0 && (
+                <>
+                  {[...Array(4)].map((_, i) => <ClinicCardSkeleton key={i} />)}
+                </>
+              )}
               {cliniques.map(c => (
                 <button key={c.id} onClick={() => setSelected(c)}
                   className={`text-left bg-white/5 border rounded-2xl p-4 hover:border-[#00E5A0]/40 transition-all ${selected?.id === c.id ? 'border-[#00E5A0]/60 bg-[#00E5A0]/5' : 'border-white/10'}`}>
