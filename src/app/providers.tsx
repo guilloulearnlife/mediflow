@@ -12,7 +12,7 @@ export function PostHogProvider({ children }: { children: React.ReactNode }) {
     if (
       typeof window !== 'undefined' &&
       process.env.NEXT_PUBLIC_POSTHOG_KEY &&
-      !posthog.config  // pas encore initialisé
+      !posthog.config?.token  // token vide = pas encore initialisé
     ) {
       posthog.init(process.env.NEXT_PUBLIC_POSTHOG_KEY, {
         api_host: '/ingest',            // reverse proxy Next.js → eu.i.posthog.com
